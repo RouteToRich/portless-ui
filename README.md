@@ -4,11 +4,26 @@ React + TypeScript + Vite console for the operator. It talks to the backend mono
 (or the API Gateway in microservice mode) over REST with a JWT; counterparties never use
 it — buyers and suppliers act by e-mail.
 
+## Repository layout
+
+The backend lives in its own repo, [RouteToRich/portless](https://github.com/RouteToRich/portless).
+Check both out side by side. The build reads the backend's mock fixtures from
+`../portless/backend/mocked` (the `@mocked` alias in `vite.config.ts` / `tsconfig.json`):
+
+```
+RouteToRich/
+├─ portless/      ← backend (FastAPI monolith on :8081, mocked/ fixtures)
+└─ portless-ui/   ← this repo
+```
+
+Set `PORTLESS_MOCKED_DIR` to build against a backend checked out somewhere else.
+`tsconfig.json` can't read env vars, so `npm run lint` still expects the sibling layout.
+
 ## Stack
 
 React 18, TypeScript, Vite, TanStack Query, React Router, Axios, Tailwind + Radix
 primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`;
-`src/mocks/adapter.ts` serves `backend/mocked/` fixtures in mock mode.
+`src/mocks/adapter.ts` serves the backend's `mocked/` fixtures in mock mode.
 
 ## Screens
 

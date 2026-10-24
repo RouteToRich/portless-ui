@@ -19,9 +19,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@mocked/*": ["../backend/mocked/*"]
+      "@mocked/*": ["../portless/backend/mocked/*"]
     }
   },
-  "include": ["src", "../backend/mocked"],
+  "include": ["src", "../portless/backend/mocked"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
