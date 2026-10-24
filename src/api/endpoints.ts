@@ -31,11 +31,6 @@ import type {
   Opportunity,
   Organization,
   QcRecord,
-  RagFilesResponse,
-  RagIngestResponse,
-  RagJobStatus,
-  RagQueryResponse,
-  RagStats,
   ReadinessReport,
   ResolveApprovalRequest,
   TokenResponse,
@@ -543,26 +538,4 @@ export const MatchApi = {
         gatekeeper_passed: r.data.gatekeeper_passed,
       }))
       .catch(or404<MatchScore | null>(null)),
-};
-
-export const RagApi = {
-  stats: () => api.get<RagStats>("/rag/stats").then((r) => r.data),
-  jobStatus: (jobId: string) =>
-    api.get<RagJobStatus>(`/rag/ingest/${jobId}`).then((r) => r.data),
-  // Files durably persisted in the RAG file store (MongoDB GridFS).
-  files: (limit = 100) =>
-    api.get<RagFilesResponse>("/rag/files", { params: { limit } }).then((r) => r.data),
-  upload: (files: File[], chunkStrategy = "recursive") => {
-    const form = new FormData();
-    files.forEach((f) => form.append("files", f));
-    form.append("chunk_strategy", chunkStrategy);
-    return api
-      .post<RagIngestResponse>("/rag/upload", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      .then((r) => r.data);
-  },
-  // Full retrieve → rerank → generate pipeline, used by the Knowledge Base test chat.
-  query: (question: string) =>
-    api.post<RagQueryResponse>("/rag/query", { question }).then((r) => r.data),
 };

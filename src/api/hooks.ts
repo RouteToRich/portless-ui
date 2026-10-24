@@ -16,7 +16,6 @@ import {
   NegotiationApi,
   OpportunitiesApi,
   OrganizationsApi,
-  RagApi,
   ShieldApi,
   type AutonomyPolicyUpdate,
 } from "./endpoints";
@@ -587,68 +586,5 @@ export function useAssignUserOrg() {
     mutationFn: ({ userId, orgId }: { userId: string; orgId: string }) =>
       OrganizationsApi.assignUserOrg(userId, orgId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
-  });
-}
-
-// ── RAG Knowledge Base ────────────────────────────────────────────────────────
-
-// No automatic polling — stats hit MongoDB directly, so the only refetch
-// triggers are the initial mount and the page's manual "Refresh" button
-// (stats.refetch()).
-export function useRagStats() {
-  return useQuery({
-    queryKey: ["rag", "stats"],
-    queryFn: RagApi.stats,
-    refetchInterval: false,
-  });
-}
-
-export function useRagUpload() {
-  return useMutation({
-    mutationFn: ({ files, chunkStrategy }: { files: File[]; chunkStrategy?: string }) =>
-      RagApi.upload(files, chunkStrategy),
-  });
-}
-
-// Files durably persisted in MongoDB GridFS — proves ingestion survives restarts.
-// Same policy as useRagStats: no automatic polling, manual "Refresh" only.
-export function useRagFiles() {
-  return useQuery({
-    queryKey: ["rag", "files"],
-    queryFn: () => RagApi.files(),
-    refetchInterval: false,
-  });
-}
-
-// Test-chat: runs the full RAG pipeline for one question (no server-side history).
-export function useRagQuery() {
-  return useMutation({
-    mutationFn: (question: string) => RagApi.query(question),
-  });
-}
-
-// Polls a running ingestion job until it completes or fails — this is the
-// job-progress indicator only; it does NOT refresh stats/files (see above,
-// those are manual-refresh-only now).
-export function useRagJob(jobId: string | null) {
-  return useQuery({
-    queryKey: ["rag", "job", jobId],
-    queryFn: () => RagApi.jobStatus(jobId as string),
-    enabled: Boolean(jobId),
-    // A 404 (e.g. the backend restarted and the in-memory job registry was
-    // wiped) is definitive — the job is gone, retrying can't fix it.
-    retry: false,
-    refetchInterval: (query) => {
-      // React Query keeps the last *successful* data around even once a
-      // later fetch starts failing — without this check, a stale
-      // "pending"/"running" snapshot from before a 404 would freeze `status`
-      // forever and this would never stop polling.
-      if (query.state.status === "error") return false;
-      const s = query.state.data?.status;
-      if (s === "completed" || s === "failed") {
-        return false;
-      }
-      return 1500;
-    },
   });
 }

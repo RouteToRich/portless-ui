@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Bell,
   BookMarked,
-  BrainCircuit,
   Building2,
   LayoutGrid,
   LogOut,
@@ -43,7 +42,6 @@ const NAV = [
 
 // Portless platform staff only — everyone else never sees these links.
 const PORTLESS_NAV = [
-  { to: "/knowledge",           label: "Knowledge Base", icon: BrainCircuit },
   { to: "/admin/organizations", label: "Organizations",  icon: Building2 },
 ];
 
@@ -63,7 +61,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/catalogue":          "Catalogue",
   "/autonomy":           "Autonomy Settings",
   "/health":             "System Health",
-  "/knowledge":          "Knowledge Base",
   "/admin/organizations": "Organizations",
 };
 

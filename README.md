@@ -8,7 +8,7 @@ it — buyers and suppliers act by e-mail.
 
 The backend lives in its own repo, [RouteToRich/portless](https://github.com/RouteToRich/portless).
 Check both out side by side. The build reads the backend's mock fixtures from
-`../portless/backend/mocked` (the `@mocked` alias in `vite.config.ts` / `tsconfig.json`):
+`../portless/mocked` (the `@mocked` alias in `vite.config.ts` / `tsconfig.json`):
 
 ```
 RouteToRich/
@@ -38,7 +38,6 @@ primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`
 | `/exceptions` | Exceptions | Open exceptions, the resolver's plan, the playbook an approval will run |
 | `/autonomy` | Autonomy Settings | Per-action level, timeout, on-timeout default, value threshold; money ceiling and four-eyes |
 | `/health` | System Health | Downstream health, production readiness checks, data sources and Apify run budget, operator digest |
-| `/knowledge` | Knowledge Base | RAG corpus upload / query |
 | `/admin/organizations` | Organizations | Buyer / supplier organizations and users |
 
 Live updates: the Approvals Inbox subscribes to `GET /hitl-approval/stream` (SSE) with the

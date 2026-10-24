@@ -7,11 +7,11 @@ import path from "path";
 // For microservices production mode set VITE_API_BASE_URL to the gateway URL.
 
 // Mock-mode fixtures are the backend's documented mocked/ set, in the portless
-// repo checked out next to this one (../portless/backend/mocked). Override with
+// repo checked out next to this one (../portless/mocked). Override with
 // PORTLESS_MOCKED_DIR when the backend lives elsewhere.
 const mockedDir = process.env.PORTLESS_MOCKED_DIR
   ? path.resolve(process.env.PORTLESS_MOCKED_DIR)
-  : path.resolve(__dirname, "../portless/backend/mocked");
+  : path.resolve(__dirname, "../portless/mocked");
 
 export default defineConfig({
   plugins: [react()],

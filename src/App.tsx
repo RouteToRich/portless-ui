@@ -11,7 +11,6 @@ import { Exceptions } from "./pages/Exceptions";
 import { AutonomySettings } from "./pages/AutonomySettings";
 import { Catalogue } from "./pages/Catalogue";
 import { SystemHealth } from "./pages/SystemHealth";
-import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { OrganizationsAdmin } from "./pages/OrganizationsAdmin";
 import { Login } from "./pages/Login";
 import { useAuth } from "./lib/auth";
@@ -120,14 +119,6 @@ export default function App() {
             element={
               <RequirePortless>
                 <SystemHealth />
-              </RequirePortless>
-            }
-          />
-          <Route
-            path="/knowledge"
-            element={
-              <RequirePortless>
-                <KnowledgeBase />
               </RequirePortless>
             }
           />

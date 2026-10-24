@@ -4,7 +4,7 @@ import axios from "axios";
 // Falls back to the Vite dev proxy (/api) when VITE_API_BASE_URL is unset.
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
-// Mock mode: serve backend/mocked/ fixtures via a custom axios adapter so the
+// Mock mode: serve mocked/ fixtures via a custom axios adapter so the
 // whole console (System Health included) runs with no backend. Enable with
 // VITE_USE_MOCKS=true (e.g. `npm run dev:mock`).
 const useMocks = import.meta.env.VITE_USE_MOCKS === "true";
@@ -14,9 +14,8 @@ export const USER_KEY = "portless_user";
 
 export const api = axios.create({
   baseURL,
-  // RAG queries (embed -> hybrid search -> rerank -> LLM generate) and Mongo
-  // fallback retries can legitimately run well past 15s, so give every
-  // request up to 2 minutes rather than aborting client-side.
+  // LLM gateway requests and Mongo fallback retries can legitimately run well
+  // past 15s, so give every request up to 2 minutes rather than aborting client-side.
   timeout: 120000,
   headers: { "Content-Type": "application/json" },
 });
@@ -55,5 +54,5 @@ if (useMocks) {
   const ready = import("@/mocks/adapter").then(({ mockAdapter }) => mockAdapter);
   api.defaults.adapter = async (config) => (await ready)(config);
   // eslint-disable-next-line no-console
-  console.info("[portless] mock mode ON — serving backend/mocked fixtures");
+  console.info("[portless] mock mode ON — serving mocked fixtures");
 }

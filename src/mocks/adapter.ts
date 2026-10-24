@@ -1,10 +1,10 @@
-// Mock axios adapter — serves the fixtures in backend/mocked/ so the entire
-// Ops Console (System Health included) runs without any backend.
+// Mock axios adapter — serves the backend repository's mocked/ fixtures so
+// the entire Ops Console (System Health included) runs without a backend.
 //
 // Enabled via VITE_USE_MOCKS=true (see api/client.ts). All matching happens at
 // the axios *adapter* level, so no real network request is ever made.
 //
-// NOTE: the backend/mocked fixtures were authored independently of the UI's
+// NOTE: the mocked fixtures were authored independently of the UI's
 // TypeScript types (src/api/types.ts) and disagree on nearly every entity, so
 // each handler below maps the fixture shape into the shape the UI consumes.
 import type { AxiosAdapter, AxiosResponse, InternalAxiosRequestConfig } from "axios";
@@ -36,10 +36,6 @@ import dealEscrowFunded from "@mocked/deals/deal_detail_escrow_funded.json";
 import dealInTransit from "@mocked/deals/deal_detail_in_transit.json";
 import dealPaid from "@mocked/deals/deal_detail_paid.json";
 import dealDispute from "@mocked/deals/deal_detail_dispute.json";
-
-// RAG knowledge base.
-import ragStats from "@mocked/rag/stats.json";
-import ragQueryFixture from "@mocked/rag/query.json";
 
 // Deal-detail sub-resources.
 import matchScoreFixture from "@mocked/match_engine/score_result.json";
@@ -420,85 +416,6 @@ function ownerFromAuthHeader(header: string | undefined): string {
 }
 function publicUser(u: MockUser) {
   return { user_id: u.user_id, email: u.email, name: u.name, created_at: new Date().toISOString() };
-}
-
-// ── RAG ingest job + GridFS file-store simulation ────────────────────────
-// Track upload start times so a polled job reports running for ~2.5s then
-// completes — mirroring the real background ingestion flow.
-const ragJobs = new Map<string, number>();
-function ragJobStatus(id: string) {
-  const started = ragJobs.get(id);
-  const done = !started || Date.now() - started > 2500;
-  return {
-    job_id: id,
-    status: done ? "completed" : "running",
-    inserted_count: done ? 42 : null,
-    graph_inserted_count: done ? 18 : null,
-    error: null,
-    started_at: new Date(started ?? Date.now()).toISOString(),
-    completed_at: done ? new Date().toISOString() : null,
-  };
-}
-
-// Mirrors the real /rag/files list (MongoDB GridFS) so the Knowledge Base
-// page's "Persisted Documents" panel reflects actual uploads in mock mode too.
-interface MockRagFile {
-  file_id: string;
-  filename: string;
-  size: number;
-  backend: string;
-  content_type: string | null;
-  uploaded_at: string;
-}
-const ragFiles: MockRagFile[] = [
-  {
-    file_id: "gridfs-seed-0001",
-    filename: "trade-playbook-rice-hs1006.pdf",
-    size: 482_311,
-    backend: "mongodb",
-    content_type: "application/pdf",
-    uploaded_at: new Date(Date.now() - 86_400_000 * 3).toISOString(),
-  },
-  {
-    file_id: "gridfs-seed-0002",
-    filename: "supplier-terms-glossary.md",
-    size: 18_204,
-    backend: "mongodb",
-    content_type: "text/markdown",
-    uploaded_at: new Date(Date.now() - 86_400_000).toISOString(),
-  },
-];
-
-// Reuses the single realistic query.json fixture for every question, just
-// swapping in the asked question so the test-chat panel feels responsive
-// without needing a fixture per possible question.
-function ragQueryAnswer(body: RawObj) {
-  const question = String(body.question ?? "").trim() || "What documents are needed?";
-  return { ...ragQueryFixture, question };
-}
-
-function ragStartJob(body: RawObj) {
-  const id = `rag-job-${Date.now().toString(16)}`;
-  ragJobs.set(id, Date.now());
-
-  // The real endpoint is multipart/form-data; extract File entries so the
-  // mock file store (below) grows with whatever was actually dropped in the
-  // UI, just like the real MongoDB GridFS-backed store does.
-  if (typeof FormData !== "undefined" && body instanceof FormData) {
-    const files = body.getAll("files").filter((f): f is File => f instanceof File);
-    files.forEach((f, i) => {
-      ragFiles.push({
-        file_id: `gridfs-${Date.now().toString(16)}-${i}`,
-        filename: f.name,
-        size: f.size,
-        backend: "mongodb",
-        content_type: f.type || null,
-        uploaded_at: new Date().toISOString(),
-      });
-    });
-  }
-
-  return { job_id: id, status: "pending", message: `Accepted. Poll /rag/ingest/${id}.` };
 }
 
 // Route table: "METHOD /path" → handler. `:param` captures a path segment.
@@ -913,15 +830,6 @@ const routes: Record<string, Handler> = {
         exceptionListItems.find((e) => e.exception_id === id) ??
         (excQc as RawObj)
     ),
-
-  // RAG knowledge base
-  "GET /rag/stats": () => ragStats,
-  "GET /rag/health": () => ({ status: "ok", mongodb: "ok", vector_index: "ok" }),
-  "POST /rag/upload": ({ body }) => ragStartJob(body),
-  "POST /rag/ingest": ({ body }) => ragStartJob(body),
-  "GET /rag/ingest/:id": ({ id }) => ragJobStatus(id),
-  "GET /rag/files": () => ({ backend: "mongodb", count: ragFiles.length, files: ragFiles }),
-  "POST /rag/query": ({ body }) => ragQueryAnswer(body),
 
   // Deal-detail sub-resources — emulate the REAL backend response shapes;
   // endpoints.ts owns the backend→UI mapping for both mock and live modes.
