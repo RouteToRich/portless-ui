@@ -7,23 +7,11 @@ it — buyers and suppliers act by e-mail.
 ## Repository layout
 
 The backend lives in its own repo, [RouteToRich/portless](https://github.com/RouteToRich/portless).
-Check both out side by side. The build reads the backend's mock fixtures from
-`../portless/mocked` (the `@mocked` alias in `vite.config.ts` / `tsconfig.json`):
-
-```
-RouteToRich/
-├─ portless/      ← backend (FastAPI monolith on :8081, mocked/ fixtures)
-└─ portless-ui/   ← this repo
-```
-
-Set `PORTLESS_MOCKED_DIR` to build against a backend checked out somewhere else.
-`tsconfig.json` can't read env vars, so `npm run lint` still expects the sibling layout.
 
 ## Stack
 
 React 18, TypeScript, Vite, TanStack Query, React Router, Axios, Tailwind + Radix
-primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`;
-`src/mocks/adapter.ts` serves the backend's `mocked/` fixtures in mock mode.
+primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`.
 
 ## Screens
 
@@ -48,7 +36,6 @@ token as a query parameter.
 ```bash
 npm install
 npm run dev          # http://localhost:5173 → backend on http://localhost:8081
-npm run dev:mock     # same UI on fixtures, no backend needed
 npm run lint         # tsc --noEmit
 npm run build        # production bundle in dist/
 ```
