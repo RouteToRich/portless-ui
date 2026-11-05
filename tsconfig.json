@@ -18,10 +18,9 @@
     "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@mocked/*": ["../portless/mocked/*"]
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "../portless/mocked"],
+  "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

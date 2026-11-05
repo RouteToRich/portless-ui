@@ -290,7 +290,7 @@ export interface Opportunity {
 
 // GET /trade-min/sources — which demand / buyer / seller / enrichment sources
 // the scanner can reach right now (incl. the PortLess-owned Apify actors).
-export type SourceMode = "live" | "stub" | "mock" | "open";
+export type SourceMode = "live" | "stub" | "open";
 export type SourceRole = "demand" | "buyers" | "sellers" | "tariff" | "enrichment" | "screening";
 
 export interface TradeSource {
@@ -306,7 +306,6 @@ export interface TradeSource {
 }
 
 export interface TradeSourcesResponse {
-  mock_mode: boolean;
   apify: {
     token_present: boolean;
     owner: string;
@@ -485,6 +484,8 @@ export interface DealException {
 export type DownstreamHealth = Record<string, string>;
 
 // Auth
+// The caller as PortLess sees them (backend GET /identity/me): auth-service's
+// identity plus the organization and Portless-staff flag kept by PortLess.
 export interface AuthUser {
   user_id: string;
   email: string;
@@ -492,15 +493,24 @@ export interface AuthUser {
   org_id: string | null;
   is_portless: boolean;
   created_at?: string | null;
+  /** A record from before sign-in moved to auth-service — nobody can sign in as it. */
+  legacy?: boolean;
 }
 
+// auth-service's TokenResponse (POST /auth/login, /auth/register, /auth/refresh-token).
 export interface TokenResponse {
   access_token: string;
   token_type: string;
-  user: AuthUser;
+  user?: {
+    user_id: string;
+    email: string;
+    name: string;
+    accounts?: { account_id: string; name?: string; selected?: boolean }[];
+    is_admin?: boolean;
+  };
 }
 
-// Organizations (Portless platform staff only — see /auth/organizations, /auth/users)
+// Organizations (Portless platform staff only — see /identity/organizations, /identity/users)
 export interface Organization {
   org_id: string;
   name: string;

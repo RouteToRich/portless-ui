@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/auth/:path*",
+      "destination": "https://api-gateway-two-nu.vercel.app/auth/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-gateway-two-nu.vercel.app/api/portless/:path*"
+    },
+    {
+      "source": "/((?!auth/|api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

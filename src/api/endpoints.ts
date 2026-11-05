@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, authApi } from "./client";
 import type {
   ApprovalRecord,
   AutonomyLevel,
@@ -38,28 +38,33 @@ import type {
   UpdatePartyRequest,
 } from "./types";
 
-// Thin wrappers around the gateway endpoints (services/api_gateway/router.py).
+// Thin wrappers around the backend (through the gateway at /api/*) and auth-service (/auth/*).
 
+// Sign-in, sign-up and sign-out are auth-service's, through the gateway's
+// /auth/* (authApi). `account_id` names PortLess's app account, so a user is
+// resolved IN this application (see config/accounts.ts).
 export const AuthApi = {
-  register: (payload: { email: string; name: string; password: string }) =>
-    api.post<TokenResponse>("/auth/register", payload).then((r) => r.data),
-  login: (payload: { email: string; password: string }) =>
-    api.post<TokenResponse>("/auth/login", payload).then((r) => r.data),
-  me: () => api.get<AuthUser>("/auth/me").then((r) => r.data),
-  // Revokes the current bearer token server-side (shared/auth/blacklist.py)
-  // so it can't be replayed even if it leaked before its natural expiry.
-  logout: () => api.post<void>("/auth/logout").then(() => undefined),
+  register: (payload: { email: string; name: string; password: string; account_id: string }) =>
+    authApi.post<TokenResponse>("/auth/register", payload).then((r) => r.data),
+  login: (payload: { email: string; password: string; account_id: string }) =>
+    authApi.post<TokenResponse>("/auth/login", payload).then((r) => r.data),
+  // Revokes the token at auth-service. The backend may keep honouring it for
+  // up to its token-check cache (60 s); the UI drops it immediately.
+  logout: () => authApi.post<void>("/auth/logout").then(() => undefined),
+  // The caller as PortLess sees them: organization + Portless-staff flag,
+  // which auth-service knows nothing about (backend /identity/me).
+  me: () => api.get<AuthUser>("/identity/me").then((r) => r.data),
 };
 
 // Organizations admin — Portless platform staff only (403 for everyone else).
 export const OrganizationsApi = {
-  list: () => api.get<Organization[]>("/auth/organizations").then((r) => r.data),
+  list: () => api.get<Organization[]>("/identity/organizations").then((r) => r.data),
   create: (name: string) =>
-    api.post<Organization>("/auth/organizations", { name }).then((r) => r.data),
-  listUsers: () => api.get<AuthUser[]>("/auth/users").then((r) => r.data),
+    api.post<Organization>("/identity/organizations", { name }).then((r) => r.data),
+  listUsers: () => api.get<AuthUser[]>("/identity/users").then((r) => r.data),
   assignUserOrg: (userId: string, orgId: string) =>
     api
-      .patch<AuthUser>(`/auth/users/${userId}/organization`, { org_id: orgId })
+      .patch<AuthUser>(`/identity/users/${userId}/organization`, { org_id: orgId })
       .then((r) => r.data),
 };
 
@@ -129,7 +134,7 @@ export const OpportunitiesApi = {
   scan: (payload: { hs_codes?: string[]; target_markets?: string[] }) =>
     api.post<Opportunity[]>("/trade-min/scan", payload).then((r) => r.data),
   // Which demand / buyer / seller / enrichment sources the scanner can reach
-  // (live / stub / mock / open) — incl. the PortLess-owned Apify actors.
+  // (live / stub / open) — incl. the PortLess-owned Apify actors.
   sources: () => api.get<TradeSourcesResponse>("/trade-min/sources").then((r) => r.data),
 };
 
@@ -272,10 +277,7 @@ export const NegotiationApi = {
 
 // ── Deal sub-resources ──────────────────────────────────────────────────────
 // These map the REAL backend response shapes (each service's schemas.py) onto
-// the UI types. The previous paths (/escrow-guard/holds?deal_id=…,
-// /shield-link/qc, /docugen/documents, /match-engine/matches) only ever
-// existed in the mock adapter — against the live backend they 404'd and every
-// deal-detail tab rendered empty.
+// the UI types.
 
 // swallow a 404 into `empty` — "no record yet" is a normal state, not an error
 function or404<T>(empty: T) {
@@ -503,7 +505,7 @@ export const DealmakerApi = {
 async function fetchFileBlob(path: string, fallbackType = "text/html"): Promise<Blob> {
   const r = await api.get(path, { responseType: "blob" });
   if (r.data instanceof Blob) return r.data;
-  // Mock adapter returns a plain string — coerce so View/Download still work.
+  // A non-Blob body (plain string / JSON) — coerce so View/Download still work.
   return new Blob([typeof r.data === "string" ? r.data : JSON.stringify(r.data)], {
     type: fallbackType,
   });

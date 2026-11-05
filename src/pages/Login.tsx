@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Package2, Loader2 } from "lucide-react";
-import axios from "axios";
 import { useAuth } from "@/lib/auth";
+import { errorMessage } from "@/api/client";
+import { isAccountConfigured } from "@/config/accounts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,11 +30,7 @@ export function Login() {
       }
       navigate("/", { replace: true });
     } catch (err) {
-      let msg = "Something went wrong. Please try again.";
-      if (axios.isAxiosError(err)) {
-        msg = (err.response?.data as { detail?: string })?.detail ?? err.message;
-      }
-      setError(msg);
+      setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -52,6 +49,14 @@ export function Login() {
           </h1>
           <p className="text-xs text-muted-foreground">Merchant-export Ops Console</p>
         </div>
+
+        {!isAccountConfigured && (
+          <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+            Sign-in is not set up yet: this build has no PortLess app account
+            (<code>VITE_PORTLESS_ACCOUNT_ID</code>). Create the PortLess account in
+            account management, set its id in the deployment and rebuild.
+          </div>
+        )}
 
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
           {/* Tabs */}
@@ -128,7 +133,7 @@ export function Login() {
               </p>
             )}
 
-            <Button type="submit" className="w-full gap-2" disabled={busy}>
+            <Button type="submit" className="w-full gap-2" disabled={busy || !isAccountConfigured}>
               {busy && <Loader2 className="w-4 h-4 animate-spin" />}
               {mode === "login" ? "Sign in" : "Create account"}
             </Button>

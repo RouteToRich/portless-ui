@@ -202,6 +202,15 @@ export function OrganizationsAdmin() {
                             Portless
                           </Badge>
                         )}
+                        {u.legacy && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px]"
+                            title="From before sign-in moved to auth-service. Nobody can sign in as this record; the person signs up again and you assign their new record."
+                          >
+                            Legacy
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                     </div>

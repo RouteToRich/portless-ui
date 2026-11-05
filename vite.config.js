@@ -1,38 +1,27 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-// The UI talks to the combined dev server on port 8081.
-// Every module is reachable at its own prefix (e.g. /api/deals/..., /api/trade-min/...).
-// For microservices production mode set VITE_API_BASE_URL to the gateway URL.
-// Mock-mode fixtures are the backend's documented mocked/ set, in the portless
-// repo checked out next to this one (../portless/mocked). Override with
-// PORTLESS_MOCKED_DIR when the backend lives elsewhere.
-var mockedDir = process.env.PORTLESS_MOCKED_DIR
-    ? path.resolve(process.env.PORTLESS_MOCKED_DIR)
-    : path.resolve(__dirname, "../portless/mocked");
-export default defineConfig({
-    plugins: [react()],
-    resolve: {
-        alias: {
-            "@": path.resolve(__dirname, "./src"),
-            "@mocked": mockedDir,
-        },
-    },
-    server: {
-        port: 5173,
-        // Allow importing the JSON fixtures from outside the ui root.
-        fs: {
-            allow: [path.resolve(__dirname), mockedDir],
-        },
-        proxy: {
-            "/api": {
-                target: "http://localhost:8081",
-                changeOrigin: true,
-                rewrite: function (path) { return path.replace(/^\/api/, ""); },
+import { portlessProxy } from "./proxy.config.mjs";
+// Compiled twin of vite.config.ts (Vite picks this file first) — keep the two in step.
+// Requests take the production path in dev too: /auth/* to auth-service and
+// /api/* to the backend, both through the RouteToRich API gateway (or /api/*
+// straight to a local backend with BACKEND_PROXY_TARGET). See proxy.config.mjs.
+export default defineConfig(function (_a) {
+    var mode = _a.mode;
+    var env = Object.assign({}, loadEnv(mode, process.cwd(), ""), process.env);
+    return {
+        plugins: [react()],
+        resolve: {
+            alias: {
+                "@": path.resolve(__dirname, "./src"),
             },
         },
-    },
-    build: {
-        target: "esnext",
-    },
+        server: {
+            port: 5173,
+            proxy: portlessProxy(env),
+        },
+        build: {
+            target: "esnext",
+        },
+    };
 });

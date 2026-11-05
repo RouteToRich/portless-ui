@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * kanban board, no click-through to deal detail, no negotiation/escrow/QC/
  * freight/document sub-resources. The backend enforces the same boundary
  * (shared/auth/middleware.py's non-Portless allowlist only permits
- * GET /deals + GET /auth/me), so this page isn't just a UI convention.
+ * GET /deals + GET /identity/me), so this page isn't just a UI convention.
  */
 export function OrgDeals() {
   const { user } = useAuth();

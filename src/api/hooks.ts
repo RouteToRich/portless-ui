@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TOKEN_KEY } from "./client";
+import { API_BASE_PATH, SESSION_EVENT, TOKEN_KEY } from "./client";
 import {
   ApprovalsApi,
   AutonomyApi,
@@ -182,7 +182,7 @@ export function useOpportunity(opportunityId: string | null | undefined) {
   });
 }
 
-// Data-source status for the Opportunity Radar header (live / stub / mock / open).
+// Data-source status for the Opportunity Radar header (live / stub / open).
 export function useTradeSources() {
   return useQuery({
     queryKey: ["trade-sources"],
@@ -240,21 +240,25 @@ export function useApprovalStream() {
   const [events, setEvents] = useState<ApprovalRecord[]>([]);
   const [connected, setConnected] = useState(false);
   const qc = useQueryClient();
-  const baseURL = import.meta.env.VITE_API_BASE_URL ?? "";
+  // The one call that does NOT go through the gateway: a serverless gateway
+  // cannot hold a stream open, so the stream is opened against the backend
+  // DIRECTLY (VITE_SSE_BASE_URL, e.g. https://portless-api.onrender.com; the
+  // backend's FRONTEND_URL must allow this origin). Unset, it falls back to
+  // the same-origin /api path, which works with the dev proxy to a local backend.
+  const baseURL = (import.meta.env.VITE_SSE_BASE_URL ?? "").trim().replace(/\/+$/, "") || API_BASE_PATH;
 
   useEffect(() => {
-    // EventSource can't set an Authorization header, so the token travels as
-    // a query param — the backend's AuthMiddleware narrowly allows this only
-    // for this one SSE path (see shared/auth/middleware.py).
-    const token = localStorage.getItem(TOKEN_KEY);
-    const path = baseURL ? `${baseURL}/hitl-approval/stream` : "/api/hitl-approval/stream";
-    const url = token ? `${path}?token=${encodeURIComponent(token)}` : path;
-
-    let es: EventSource;
+    let es: EventSource | undefined;
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const connect = () => {
-      es = new EventSource(url);
+      es?.close();
+      // EventSource can't set an Authorization header, so the token travels as
+      // a query param — the backend accepts it on this one path only, and checks
+      // it with auth-service like any other. Read per connect: refresh rotates it.
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      es = new EventSource(`${baseURL}/hitl-approval/stream?token=${encodeURIComponent(token)}`);
 
       es.onopen = () => setConnected(true);
 
@@ -278,14 +282,23 @@ export function useApprovalStream() {
 
       es.onerror = () => {
         setConnected(false);
-        es.close();
+        es?.close();
+        clearTimeout(retryTimeout);
         retryTimeout = setTimeout(connect, 5000);
       };
     };
 
+    // A refreshed (rotated) token: reconnect with the new one.
+    const onSession = () => {
+      clearTimeout(retryTimeout);
+      connect();
+    };
+
     connect();
+    window.addEventListener(SESSION_EVENT, onSession);
 
     return () => {
+      window.removeEventListener(SESSION_EVENT, onSession);
       es?.close();
       clearTimeout(retryTimeout);
     };

@@ -140,7 +140,6 @@ function modeTone(mode: string) {
   switch (mode) {
     case "live": return "#2ec28a";
     case "open": return "#4f8cff";
-    case "mock": return "#a78bfa";
     default: return "#f5a623";
   }
 }
@@ -172,7 +171,7 @@ function DataSourcesPanel() {
             <Database className="w-4 h-4 text-[#4f8cff]" />
             <CardTitle>Data sources &amp; Apify actors</CardTitle>
             <span className="text-[10px] text-muted-foreground">
-              {data.live_count} of {data.total} reachable{data.mock_mode && " · TRADE_MIN_MOCK_MODE"}
+              {data.live_count} of {data.total} reachable
             </span>
           </div>
           <div className="flex items-center gap-2 text-[10px] flex-wrap">

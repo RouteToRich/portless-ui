@@ -1,29 +1,24 @@
 # PortLess operator console (UI)
 
-React + TypeScript + Vite console for the operator. It talks to the backend monolith
-(or the API Gateway in microservice mode) over REST with a JWT; counterparties never use
-it — buyers and suppliers act by e-mail.
+React + TypeScript + Vite console for the operator. Like MakeMeRich, it signs people in at
+**auth-service** and reaches the backend through the shared **RouteToRich API gateway**;
+counterparties never use it — buyers and suppliers act by e-mail.
 
 ## Repository layout
 
 The backend lives in its own repo, [RouteToRich/portless](https://github.com/RouteToRich/portless).
-Check both out side by side. The build reads the backend's mock fixtures from
-`../portless/mocked` (the `@mocked` alias in `vite.config.ts` / `tsconfig.json`):
+Check both out side by side:
 
 ```
 RouteToRich/
-├─ portless/      ← backend (FastAPI monolith on :8081, mocked/ fixtures)
+├─ portless/      ← backend (FastAPI monolith on :8081)
 └─ portless-ui/   ← this repo
 ```
-
-Set `PORTLESS_MOCKED_DIR` to build against a backend checked out somewhere else.
-`tsconfig.json` can't read env vars, so `npm run lint` still expects the sibling layout.
 
 ## Stack
 
 React 18, TypeScript, Vite, TanStack Query, React Router, Axios, Tailwind + Radix
-primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`;
-`src/mocks/adapter.ts` serves the backend's `mocked/` fixtures in mock mode.
+primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`.
 
 ## Screens
 
@@ -43,17 +38,47 @@ primitives. Types, endpoints and hooks live in `src/api/`; pages in `src/pages/`
 Live updates: the Approvals Inbox subscribes to `GET /hitl-approval/stream` (SSE) with the
 token as a query parameter.
 
+## Sign-in and routing
+
+Every request is same-origin; the rewrite layer forwards it (`vercel.json` deployed,
+`proxy.config.mjs` in dev — the same routing as MakeMeRich):
+
+| Path | Goes to | What |
+|---|---|---|
+| `/auth/*` | `<gateway>/auth/*` | auth-service: sign-up, sign-in, refresh (rotating), sign-out |
+| `/api/*` | `<gateway>/api/portless/*` | the PortLess backend |
+| `VITE_SSE_BASE_URL/hitl-approval/stream` | the backend directly | the one stream a serverless gateway cannot hold open |
+
+Sign-in and sign-up send `account_id` = `VITE_PORTLESS_ACCOUNT_ID`, PortLess's app account in
+auth-service (from the account-management console). Until it is set, the sign-in page says
+so and refuses to submit. After sign-in the console reads `GET /api/identity/me` — the
+organization and Portless-staff flag the backend keeps — and refreshes the token two
+minutes before it expires.
+
 ## Configure and run
 
 ```bash
+cp .env.example .env # set VITE_PORTLESS_ACCOUNT_ID once the app account exists
 npm install
-npm run dev          # http://localhost:5173 → backend on http://localhost:8081
-npm run dev:mock     # same UI on fixtures, no backend needed
+npm run dev          # http://localhost:5173 — /auth via the gateway, /api → BACKEND_PROXY_TARGET
 npm run lint         # tsc --noEmit
 npm run build        # production bundle in dist/
 ```
 
-`VITE_API_BASE_URL` points the client at a different backend (default the monolith on
-8081; the Vite dev proxy forwards `/api` otherwise). Log in with an account whose e-mail is
-on the backend's `AUTH_PORTLESS_EMAILS` allowlist to see the operator screens; other
-accounts see only their own organization's deals.
+Dev routing: `/auth/*` always goes to `GATEWAY_PROXY_TARGET` (default the deployed gateway).
+`/api/*` goes straight to `BACKEND_PROXY_TARGET` (e.g. the local monolith on 8081, which
+checks each token with the gateway itself) or, when that is empty, through the gateway's
+`/api/portless`. Sign in with an account whose e-mail is on the backend's
+`AUTH_PORTLESS_EMAILS` allowlist to see the operator screens; other accounts see only their
+own organization's deals once a Portless admin assigns them one.
+
+## Deploy (Vercel)
+
+`vercel.json` holds the rewrites above. Set in the project's environment, then redeploy
+(Vite inlines `VITE_*` at build time):
+
+- `VITE_PORTLESS_ACCOUNT_ID` — PortLess's app account id
+- `VITE_SSE_BASE_URL` — the backend's public URL (the backend's `FRONTEND_URL` must be
+  this site's origin)
+
+The gateway must route `/api/portless` to the PortLess backend.

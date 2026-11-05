@@ -36,7 +36,6 @@ function modeVariant(mode: string): "success" | "info" | "secondary" | "warning"
   switch (mode) {
     case "live": return "success";
     case "open": return "info";
-    case "mock": return "warning";
     default: return "secondary";
   }
 }
@@ -399,7 +398,6 @@ export function OpportunityRadar() {
                     (sourcesInfo.apify.ai_tier ? " (AI tier)" : " (rule tier)")
                   : "APIFY_TOKEN not set — buyer/seller identification actors are skipped")
               : "Live arbitrage signals from Comtrade, US Census, World Bank WITS and the PortLess Apify actors"}
-            {sourcesInfo?.mock_mode && " · TRADE_MIN_MOCK_MODE"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -474,7 +472,7 @@ export function OpportunityRadar() {
         })}
       </div>
 
-      {/* Data sources — live / open / stub / mock, incl. the PortLess Apify actors (⚡) */}
+      {/* Data sources — live / open / stub, incl. the PortLess Apify actors (⚡) */}
       {sourcesInfo && sourcesInfo.sources.length > 0 && (
         <div className="rounded-xl border border-border bg-popover px-4 py-3">
           <SourceChips sources={sourcesInfo.sources} />

@@ -3,7 +3,8 @@
  * This avoids spawning the esbuild native binary (blocked by Device Guard)
  * by passing config inline and disabling esbuild-dependent features.
  */
-import { createServer } from "./node_modules/vite/dist/node/index.js";
+import { createServer, loadEnv } from "./node_modules/vite/dist/node/index.js";
+import { portlessProxy } from "./proxy.config.mjs";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const react = require("./node_modules/@vitejs/plugin-react/dist/index.cjs");
@@ -38,13 +39,8 @@ async function main() {
     },
     server: {
       port: 5173,
-      proxy: {
-        "/api": {
-          target: "http://localhost:8081",
-          changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/api/, ""),
-        },
-      },
+      // Same routing as vite.config.ts — see proxy.config.mjs.
+      proxy: portlessProxy({ ...loadEnv("development", __dirname, ""), ...process.env }),
     },
   });
 
