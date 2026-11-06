@@ -144,6 +144,194 @@ export interface BuyerCandidate {
   replied_at?: string | null;
   reply_preview?: string | null;
   email_id?: string | null;
+  /** Why the last e-mail to this candidate did not go out (e.g. no mailbox configured). */
+  send_error?: string | null;
+  send_attempts?: number;
+  requirement?: BuyerRequirement | null;
+  indicative_offer?: IndicativeOffer | null;
+  reply_address?: string | null;
+}
+
+// Prospect matching — services/deals/schemas.py + shared/orchestration/matchmaking.py
+export interface BuyerRequirement {
+  grade?: string | null;
+  packaging?: string | null;
+  quantity_mt?: number | null;
+  delivery_window?: string | null;
+  delivery_by_days?: number | null;
+  incoterm?: string | null;
+  destination_port?: string | null;
+  target_price_usd_per_mt?: number | null;
+  target_price_incoterm?: string | null;
+  target_price_basis?: "stated" | "counter" | "accepted_offer" | null;
+  certifications?: string[];
+  payment_terms?: string | null;
+  notes?: string | null;
+  source?: string | null;
+  confidence?: number | null;
+  updated_at?: string | null;
+}
+
+export interface IndicativeOffer {
+  offer_id: string;
+  price_low_usd_per_mt: number;
+  price_high_usd_per_mt: number;
+  incoterm: string;
+  destination_port?: string | null;
+  quantity_mt?: number | null;
+  sent_at?: string | null;
+  response?: "accepted" | "countered" | "declined" | null;
+  responded_at?: string | null;
+}
+
+export interface SupplierOffer {
+  offer_id: string;
+  supplier_id: string;
+  company_name?: string;
+  email?: string | null;
+  grade?: string | null;
+  fob_price_usd_per_mt?: number | null;
+  moq_mt?: number | null;
+  capacity_mt_per_month?: number | null;
+  lead_time_days?: number | null;
+  port_of_loading?: string | null;
+  certifications?: string[];
+  payment_terms?: string | null;
+  validity_days?: number | null;
+  gst_verified?: boolean | null;
+  iec_active?: boolean | null;
+  verification_failed?: boolean;
+  quote_id?: string | null;
+  source?: string | null;
+  origin_deal_id?: string | null;
+  received_at?: string | null;
+}
+
+export interface PriceEstimate {
+  hs_code: string;
+  side: "buyer" | "supplier";
+  market?: string | null;
+  median?: number | null;
+  p25?: number | null;
+  p75?: number | null;
+  sigma?: number | null;
+  n_observations: number;
+  prior?: number | null;
+  prior_source?: string | null;
+  confidence: "none" | "prior" | "low" | "medium" | "high";
+}
+
+export interface PricePoint {
+  value?: number | null;
+  basis: string;
+  sigma?: number | null;
+  incoterm?: string | null;
+}
+
+export interface LandedCost {
+  fob_usd_per_mt: number;
+  freight_usd_per_mt: number;
+  inspection_usd_per_mt: number;
+  insurance_pct: number;
+  escrow_fee_pct: number;
+  margin_floor_pct: number;
+  incoterm: string;
+  cost_usd_per_mt: number;
+  min_offer_usd_per_mt: number;
+}
+
+export interface PairScore {
+  candidate_id: string;
+  buyer_name: string;
+  buyer_status: string;
+  offer_id: string;
+  supplier_id: string;
+  supplier_name: string;
+  origin_deal_id?: string | null;
+  quantity_mt: number;
+  feasible: boolean;
+  blockers: string[];
+  missing: string[];
+  buyer_price: PricePoint;
+  supplier_price: PricePoint;
+  landed?: LandedCost | null;
+  margin_usd_per_mt?: number | null;
+  margin_pct?: number | null;
+  p_margin?: number | null;
+  spec_fit: number;
+  engagement: number;
+  reliability: number;
+  timing_fit: number;
+  probability: number;
+  probability_raw?: number | null;
+  calibrated?: boolean;
+  buyer_history?: { deals: number; signed: number; failed: number; factor: number } | null;
+  supplier_history?: { deals: number; completed: number; bad: number; failed: number; factor: number } | null;
+  expected_value_usd: number;
+  firm: boolean;
+  next_step: string;
+}
+
+export interface MatchBoard {
+  deal_id: string;
+  hs_code: string;
+  market?: string | null;
+  status: string;
+  priors: { buyer?: number | null; supplier?: number | null; source?: string | null; tariff_pct?: number | null };
+  buyer_estimate: PriceEstimate;
+  supplier_estimate: PriceEstimate;
+  buyers: { candidate_id: string; legal_name: string; country: string; status: string; email?: string | null;
+            requirement?: BuyerRequirement | null; indicative_offer?: IndicativeOffer | null }[];
+  offers: SupplierOffer[];
+  pairs: PairScore[];
+  min_probability: number;
+  assumptions: Record<string, number | null>;
+  next_actions: string[];
+  learning?: {
+    calibration_active: boolean;
+    resolved_matches: number;
+    calibration_error?: number | null;
+    offer_pricing?: { responses: number; acceptance_rate?: number | null; price_nudge: number };
+  };
+}
+
+// Sourcing — services/sourcing/schemas.py
+export interface RfqDispatchResult {
+  supplier_id: string;
+  contact_id?: string | null;
+  channel: string;
+  email?: string | null;
+  ext_rfq_id?: string | null;
+  success: boolean;
+  error?: string | null;
+}
+
+export interface RfqRecord {
+  rfq_id: string;
+  deal_id: string;
+  hs_code: string;
+  supplier_ids: string[];
+  dispatch_results: RfqDispatchResult[];
+  quantity_mt?: number | null;
+  target_price_usd?: number | null;
+  status: "PENDING" | "COMPLETE" | "PARTIAL" | "FAILED" | string;
+  dispatched_at?: string | null;
+  expires_at?: string | null;
+}
+
+export interface QuoteRecord {
+  quote_id: string;
+  rfq_id: string;
+  deal_id: string;
+  supplier_id: string;
+  company_name?: string;
+  unit_price_usd: number;
+  quantity_mt?: number | null;
+  lead_time_days?: number | null;
+  re_scored_cms?: number | null;
+  re_scored_decision?: string | null;
+  status: string;
+  received_at?: string | null;
 }
 
 export interface Deal {

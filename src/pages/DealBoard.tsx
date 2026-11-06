@@ -7,6 +7,7 @@ import { useDeals } from "@/api/hooks";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QueryState } from "@/components/QueryState";
 import { DealPipeline } from "@/components/DealPipeline";
+import { isProspect } from "@/lib/prospect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 const COLUMNS = [
   {
     id: "active",
-    label: "Active",
+    label: "Negotiating",
     color: "#4f8cff",
-    statuses: ["DRAFT", "MATCHING", "NEGOTIATING", "NEGOTIATION_AGREED"] as DealStatus[],
+    // DRAFT / MATCHING are prospects (no buyer yes, no supplier chosen) — Prospects page
+    statuses: ["NEGOTIATING", "NEGOTIATION_AGREED"] as DealStatus[],
   },
   {
     id: "pi",
@@ -164,7 +166,9 @@ export function DealBoard() {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
 
-  const filtered = (deals ?? []).filter((d) => {
+  const realDeals = (deals ?? []).filter((d) => !isProspect(d));
+  const prospectCount = (deals?.length ?? 0) - realDeals.length;
+  const filtered = realDeals.filter((d) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -185,7 +189,15 @@ export function DealBoard() {
         <div>
           <h1 className="text-lg font-bold">Deal Board</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {deals?.length ?? 0} active deals
+            {realDeals.length} deal{realDeals.length === 1 ? "" : "s"} — a buyer said yes and a supplier is chosen
+            {prospectCount > 0 && (
+              <>
+                {" · "}
+                <button className="text-primary hover:underline" onClick={() => navigate("/prospects")}>
+                  {prospectCount} prospect{prospectCount === 1 ? "" : "s"} not yet deals →
+                </button>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">

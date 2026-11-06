@@ -56,6 +56,9 @@ import { ScoreRing } from "@/components/ScoreRing";
 import { EmailThread } from "@/components/EmailThread";
 import { HitlApprovalCard } from "@/components/HitlApprovalCard";
 import { OutreachPanel } from "@/components/deal/OutreachPanel";
+import { SupplierRfqPanel } from "@/components/deal/SupplierRfqPanel";
+import { MatchBoardPanel } from "@/components/deal/MatchBoardPanel";
+import { isProspect } from "@/lib/prospect";
 import { TimelineTab } from "@/components/deal/TimelineTab";
 import { JournalCard } from "@/components/deal/JournalCard";
 import { EvidencePackButtons } from "@/components/deal/EvidencePackButtons";
@@ -836,7 +839,13 @@ function OverviewTab({ dealId }: { dealId: string }) {
 
       {/* Buyer outreach funnel — every identified buyer, contacted in order
           until one says yes; the negotiation waits for that reply. */}
+      {/* Prospect stage: every buyer × supplier pair scored — the confirmed pair becomes the deal. */}
+      {isProspect(deal) && <MatchBoardPanel deal={deal} />}
+
       <OutreachPanel deal={deal} />
+
+      {/* Supplier side: who was asked for a quote and what came back. */}
+      {(isProspect(deal) || deal.status === "NEGOTIATION_FAILED") && <SupplierRfqPanel deal={deal} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Parties — identity, contact and screening from the Apify actors */}
@@ -853,8 +862,9 @@ function OverviewTab({ dealId }: { dealId: string }) {
           {!buyer && !supplier && (
             <Card>
               <CardContent className="py-6 text-xs text-muted-foreground">
-                No buyer or supplier recorded on this deal yet — run the enrichment or add them
-                once sourcing identifies the parties.
+                {isProspect(deal)
+                  ? "No counterparty decided yet. The buyer is set when a candidate above replies with interest; the supplier when a verified quote wins or you confirm one."
+                  : "No buyer or supplier recorded on this deal yet — run the enrichment or add them once sourcing identifies the parties."}
               </CardContent>
             </Card>
           )}
@@ -2242,7 +2252,7 @@ export function DealDetail() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" className="gap-1.5 -ml-2" asChild>
-            <Link to="/deals">
+            <Link to={deal && isProspect(deal) ? "/prospects" : "/deals"}>
               <ArrowLeft className="w-4 h-4" /> Back
             </Link>
           </Button>
@@ -2251,7 +2261,7 @@ export function DealDetail() {
           ) : deal ? (
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-lg font-bold">
-                Deal{" "}
+                {isProspect(deal) ? "Prospect" : "Deal"}{" "}
                 <span className="font-mono text-muted-foreground text-sm">
                   #{deal.deal_id.slice(0, 8)}
                 </span>

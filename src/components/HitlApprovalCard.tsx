@@ -64,6 +64,8 @@ const DETAIL_ACTIONS = new Set([
   "CONFIRM_BUYER_ACCEPTANCE",
   "SEND_BUYER_OUTREACH",
   "RESOLVE_EXCEPTION",
+  "SEND_INDICATIVE_OFFER",
+  "CONFIRM_MATCH",
 ]);
 
 // What APPROVE actually runs for a RESOLVE_EXCEPTION playbook
@@ -107,6 +109,10 @@ const FLAG_INFO: Record<string, { label: string; hint: string; tone: "warn" | "i
     tone: "ok",
   },
 };
+
+function numv(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
 
 function str(v: unknown): string | null {
   if (v == null || v === "") return null;
@@ -176,6 +182,37 @@ function PayloadDetails({ action, payload }: { action: string; payload: Record<s
     rows.push({ label: "Escrow", value: <span className="font-mono">{str(payload.escrow_id) ?? "—"}</span> });
     rows.push({ label: "Accepted by", value: str(payload.accepted_by) ?? "—" });
     rows.push({ label: "Effect", value: "releases the final ACCEPTED-trigger tranche to PortLess" });
+  }
+  if (action === "SEND_INDICATIVE_OFFER") {
+    const low = numv(payload.price_low_usd_per_mt);
+    const high = numv(payload.price_high_usd_per_mt);
+    const min = numv(payload.min_offer_usd_per_mt);
+    rows.push({ label: "To", value: <span className="font-mono">{str(payload.to_address) ?? "—"}</span> });
+    rows.push({
+      label: "Price shown",
+      value: low != null && high != null ? `${fmtUSD(low)}–${fmtUSD(high)}/MT ${str(payload.incoterm) ?? "CIF"}` : "—",
+    });
+    rows.push({ label: "Our minimum", value: min != null ? `${fmtUSD(min)}/MT (supplier FOB + landed cost + margin floor)` : "—" });
+    rows.push({ label: "Quantity", value: numv(payload.quantity_mt) != null ? `${numv(payload.quantity_mt)} MT` : "—" });
+    const body = str(payload.body) ?? "";
+    if (body) {
+      rows.push({
+        label: "Body",
+        value: <pre className="whitespace-pre-wrap font-sans text-[11px] text-muted-foreground max-h-40 overflow-auto">{body}</pre>,
+      });
+    }
+    rows.push({ label: "Effect", value: "APPROVE e-mails the range; the buyer's accept / counter becomes their price on the match board" });
+  }
+  if (action === "CONFIRM_MATCH") {
+    const pair = (payload.pair ?? {}) as Record<string, unknown>;
+    const bp = (pair.buyer_price ?? {}) as Record<string, unknown>;
+    const sp = (pair.supplier_price ?? {}) as Record<string, unknown>;
+    rows.push({ label: "Buyer", value: `${str(pair.buyer_name) ?? "—"} — ${numv(bp.value) != null ? fmtUSD(numv(bp.value)!) : "—"}/MT ${str(bp.incoterm) ?? ""} (${str(bp.basis) ?? "—"})` });
+    rows.push({ label: "Supplier", value: `${str(pair.supplier_name) ?? "—"} — FOB ${numv(sp.value) != null ? fmtUSD(numv(sp.value)!) : "—"}/MT` });
+    rows.push({ label: "Margin", value: numv(pair.margin_pct) != null ? `${numv(pair.margin_pct)!.toFixed(1)}% (${fmtUSD(numv(pair.margin_usd_per_mt) ?? 0)}/MT)` : "—" });
+    rows.push({ label: "Chance of closing", value: numv(pair.probability) != null ? `${Math.round(numv(pair.probability)! * 100)}%` : "—" });
+    rows.push({ label: "Quantity", value: numv(pair.quantity_mt) != null ? `${numv(pair.quantity_mt)} MT` : "—" });
+    rows.push({ label: "Effect", value: "APPROVE makes this buyer and supplier the deal and opens the negotiation; REJECT keeps the prospect open" });
   }
   if (action === "SEND_BUYER_OUTREACH") {
     const body = str(payload.body) ?? "";

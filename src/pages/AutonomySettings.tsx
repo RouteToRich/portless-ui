@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAutonomyPolicy, useSaveAutonomyPolicy } from "@/api/hooks";
+import { LearningCard } from "@/components/LearningCard";
 import type { AutonomyActionPolicy, GateOverride, OnTimeout } from "@/api/endpoints";
 import type { AutonomyLevel } from "@/api/types";
 
@@ -281,6 +282,9 @@ export function AutonomySettings() {
           </Button>
         </div>
       </div>
+
+      {/* Outcome feedback loop — evidence for loosening the prospect gates */}
+      <LearningCard />
 
       {/* Level legend */}
       <Card>

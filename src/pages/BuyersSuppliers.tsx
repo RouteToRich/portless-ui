@@ -3,7 +3,13 @@ import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Factory, Globe, Mail, Phone, RefreshCw, Search, Users, Zap } from "lucide-react";
 import { cn, fmtDateTime, fmtUSD, timeAgo } from "@/lib/utils";
-import { useCounterparties, useScanOpportunities, useTradeSources } from "@/api/hooks";
+import {
+  getWorldwideSearch,
+  setWorldwideSearch,
+  useCounterparties,
+  useScanOpportunities,
+  useTradeSources,
+} from "@/api/hooks";
 import type { Counterparty } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,7 +90,7 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
         <thead>
           <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
             <th className="py-2 pr-3 font-semibold">Company</th>
-            <th className="py-2 pr-3 font-semibold">{role === "buyer" ? "Country" : "Scanned for"}</th>
+            <th className="py-2 pr-3 font-semibold">Country</th>
             <th className="py-2 pr-3 font-semibold">Contact</th>
             <th className="py-2 pr-3 font-semibold">HS codes</th>
             {role === "supplier" && <th className="py-2 pr-3 font-semibold">FOB / MT</th>}
@@ -117,7 +123,10 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
                 )}
               </td>
               <td className="py-2.5 pr-3 whitespace-nowrap">
-                {role === "buyer" ? c.country ?? "—" : c.markets.join(", ") || "—"}
+                <p>{c.country ?? "—"}</p>
+                <p className="text-[10px] text-muted-foreground" title="Markets this company was found for">
+                  {c.markets.length ? `for ${c.markets.join(", ")}` : "worldwide search"}
+                </p>
               </td>
               <td className="py-2.5 pr-3 max-w-[230px]">
                 <Contact c={c} />
@@ -151,12 +160,27 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
   );
 }
 
-function RolePanel({ role, q, market, hs, live }: { role: Role; q: string; market: string; hs: string; live: boolean }) {
+function RolePanel({
+  role,
+  q,
+  market,
+  hs,
+  country,
+  live,
+}: {
+  role: Role;
+  q: string;
+  market: string;
+  hs: string;
+  country: string;
+  live: boolean;
+}) {
   const { data, isLoading, isError, refetch } = useCounterparties(
     role,
     {
       q: q.trim() || undefined,
       market: market.trim().toUpperCase() || undefined,
+      country: country.trim().toUpperCase() || undefined,
       hs_code: hs.trim() || undefined,
     },
     { live }
@@ -188,7 +212,7 @@ function RolePanel({ role, q, market, hs, live }: { role: Role; q: string; marke
       <div className="py-12 text-center space-y-1">
         <p className="text-sm font-medium">No {role === "buyer" ? "buyers" : "suppliers"} yet</p>
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
-          {q || market || hs
+          {q || market || hs || country
             ? "Nothing matches these filters."
             : live
             ? "Scan in progress — companies appear here as they are found (refreshing every 10 s)."
@@ -212,6 +236,9 @@ export function BuyersSuppliers() {
   const [q, setQ] = useState("");
   const [market, setMarket] = useState("");
   const [hs, setHs] = useState("");
+  const [country, setCountry] = useState("");
+  const [worldwide, setWorldwide] = useState(getWorldwideSearch);
+  const indiaOnly = country.trim().toUpperCase() === "IN";
   const scan = useScanOpportunities();
   const qc = useQueryClient();
   // true while a scan runs — started here or on the Opportunity Radar
@@ -222,7 +249,7 @@ export function BuyersSuppliers() {
 
   async function handleScan() {
     try {
-      const opps = await scan.mutateAsync();
+      const opps = await scan.mutateAsync({ worldwide });
       toast.success("Scan complete", {
         description: `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} · buyer and supplier lists updated`,
       });
@@ -240,7 +267,7 @@ export function BuyersSuppliers() {
         <div className="min-w-0">
           <h1 className="text-lg font-bold">Buyers &amp; Suppliers</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Every company the scanner found, with or without an opportunity or deal
+            Every company the scanner found, in any country, with or without an opportunity or deal
             {sourcesInfo && !sourcesInfo.apify.token_present && " · APIFY_TOKEN not set, so no new companies are found"}
           </p>
         </div>
@@ -252,6 +279,24 @@ export function BuyersSuppliers() {
           onClick={() => qc.invalidateQueries({ queryKey: ["counterparties"] })}
         >
           <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </Button>
+        <Button
+          variant={worldwide ? "default" : "outline"}
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          aria-pressed={worldwide}
+          disabled={scanning}
+          title={
+            worldwide
+              ? "On: scans also search importers and suppliers in every country (2 Apify runs per product). Click to scan only the chosen markets and India."
+              : "Off: scans search only the chosen markets' buyers and India's suppliers. Click to also search every country."
+          }
+          onClick={() => {
+            setWorldwide(!worldwide);
+            setWorldwideSearch(!worldwide);
+          }}
+        >
+          <Globe className="w-3.5 h-3.5" /> Worldwide {worldwide ? "on" : "off"}
         </Button>
         <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={handleScan} disabled={scanning}>
           {scanning ? (
@@ -316,11 +361,32 @@ export function BuyersSuppliers() {
                     className="pl-8 h-8 text-xs"
                   />
                 </div>
+                {tab === "supplier" && (
+                  <Button
+                    variant={indiaOnly ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 text-xs"
+                    aria-pressed={indiaOnly}
+                    title="Show only suppliers based in India"
+                    onClick={() => setCountry(indiaOnly ? "" : "IN")}
+                  >
+                    India only
+                  </Button>
+                )}
+                <Input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="Country (DE)"
+                  maxLength={2}
+                  title="The company's own country (ISO-2)"
+                  className="h-8 text-xs w-[110px] uppercase"
+                />
                 <Input
                   value={market}
                   onChange={(e) => setMarket(e.target.value)}
                   placeholder="Market (AE)"
                   maxLength={2}
+                  title="The market the company was found for"
                   className={cn("h-8 text-xs w-[110px] uppercase")}
                 />
                 <Input
@@ -332,10 +398,10 @@ export function BuyersSuppliers() {
               </div>
             </div>
             <TabsContent value="buyer" className="mt-3">
-              <RolePanel role="buyer" q={q} market={market} hs={hs} live={scanning} />
+              <RolePanel role="buyer" q={q} market={market} hs={hs} country={country} live={scanning} />
             </TabsContent>
             <TabsContent value="supplier" className="mt-3">
-              <RolePanel role="supplier" q={q} market={market} hs={hs} live={scanning} />
+              <RolePanel role="supplier" q={q} market={market} hs={hs} country={country} live={scanning} />
             </TabsContent>
           </Tabs>
         </CardContent>

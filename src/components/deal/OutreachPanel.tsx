@@ -256,6 +256,12 @@ export function OutreachPanel({ deal }: { deal: Deal }) {
                           “{c.reply_preview}”
                         </p>
                       )}
+                      {c.send_error && (
+                        <p className="text-[11px] text-[#f5a623]">
+                          Last e-mail {c.send_error}
+                          {c.send_attempts ? ` (${c.send_attempts} attempt${c.send_attempts === 1 ? "" : "s"})` : ""}
+                        </p>
+                      )}
                     </div>
                     {skippable && (
                       <Button

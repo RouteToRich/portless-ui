@@ -364,9 +364,11 @@ export function OpportunityRadar() {
         market: opp.market,
         opportunity_id: opp.opportunity_id,
       });
-      toast.success("Deal created", { description: `Deal ${deal.deal_id.slice(0, 8)} started` });
+      toast.success("Prospect started", {
+        description: `${deal.deal_id} — PortLess is contacting the buyers and asking suppliers for quotes. Track it under Prospects.`,
+      });
     } catch {
-      toast.error("Failed to create deal");
+      toast.error("Could not start the prospect");
     }
   }
 
@@ -631,7 +633,7 @@ export function OpportunityRadar() {
                             }}
                             disabled={createDeal.isPending}
                           >
-                            <ArrowUpRight className="w-3 h-3" /> Start Deal
+                            <ArrowUpRight className="w-3 h-3" /> Start prospect
                           </Button>
                         )}
                       </td>

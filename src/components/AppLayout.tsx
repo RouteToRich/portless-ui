@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   Sun,
+  Telescope,
   TrendingUp,
   Users,
   Wifi,
@@ -32,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const NAV = [
   { to: "/radar",        label: "Opportunity Radar",  icon: Zap },
+  { to: "/prospects",    label: "Prospects",           icon: Telescope },
   { to: "/counterparties", label: "Buyers & Suppliers", icon: Users },
   { to: "/deals",        label: "Deal Board",          icon: LayoutGrid },
   { to: "/approvals",    label: "Approvals Inbox",     icon: Bell },
@@ -56,6 +58,7 @@ const NON_PORTLESS_NAV = [
 
 const PAGE_TITLES: Record<string, string> = {
   "/radar":              "Opportunity Radar",
+  "/prospects":          "Prospects",
   "/counterparties":     "Buyers & Suppliers",
   "/deals":              "Deal Board",
   "/approvals":          "Approvals Inbox",

@@ -14,7 +14,12 @@ import type {
   DigestSendResult,
   OperatorDigest,
   ProductLine,
+  QuoteRecord,
+  MatchBoard,
+  BuyerRequirement,
+  SupplierOffer,
   RecordMilestoneRequest,
+  RfqRecord,
   TrackingPollResult,
   DealmakerDealDocuments,
   DocumentRecord,
@@ -77,6 +82,40 @@ export const HealthApi = {
   readiness: () => api.get<ReadinessReport>("/health/readiness").then((r) => r.data),
 };
 
+// Prospect match board: buyer requirements × supplier offers, scored.
+export const MatchApi2 = {
+  board: (dealId: string) => api.get<MatchBoard>(`/deals/${dealId}/match-board`).then((r) => r.data),
+  evaluate: (dealId: string) => api.post(`/deals/${dealId}/match/evaluate`).then((r) => r.data),
+  indicativeOffer: (dealId: string, candidateId: string, offerId: string) =>
+    api.post<{ approval_id: string }>(`/deals/${dealId}/match/indicative-offer`, { candidate_id: candidateId, offer_id: offerId })
+      .then((r) => r.data),
+  confirm: (dealId: string, candidateId: string, offerId: string) =>
+    api.post<{ approval_id: string }>(`/deals/${dealId}/match/confirm`, { candidate_id: candidateId, offer_id: offerId })
+      .then((r) => r.data),
+  setRequirement: (dealId: string, candidateId: string, req: BuyerRequirement) =>
+    api.put(`/deals/${dealId}/buyer-candidates/${candidateId}/requirement`, req).then((r) => r.data),
+  addOffer: (dealId: string, offer: SupplierOffer) =>
+    api.post(`/deals/${dealId}/supplier-offers`, offer).then((r) => r.data),
+};
+
+// Knowledge-service (RAG) notes + the outcome feedback loop.
+export const LearningApi = {
+  learning: () => api.get<{ evidence: Record<string, unknown>; offer_pricing: unknown;
+                            track_records: Record<string, unknown>; recent: unknown[] }>("/hitl-approval/learning")
+    .then((r) => r.data),
+  addNote: (note: { subject_type: string; subject_id: string; text: string; author?: string | null }) =>
+    api.post<{ queued: boolean }>("/trade-min/knowledge/notes", note).then((r) => r.data),
+  search: (q: string) =>
+    api.get<{ enabled: boolean; results: { text: string; metadata: Record<string, string>; graph_fact: boolean }[] }>(
+      "/trade-min/knowledge/search", { params: { q } }).then((r) => r.data),
+};
+
+// Supplier side of a prospect: the RFQs sent and the quotes back.
+export const SourcingApi = {
+  rfqs: (dealId: string) => api.get<RfqRecord[]>(`/sourcing/deals/${dealId}/rfqs`).then((r) => r.data),
+  quotes: (dealId: string) => api.get<QuoteRecord[]>(`/sourcing/deals/${dealId}/quotes`).then((r) => r.data),
+};
+
 export const DealsApi = {
   list: (status?: string) =>
     api.get<Deal[]>("/deals", { params: status ? { status } : undefined }).then((r) => r.data),
@@ -134,7 +173,7 @@ export const OpportunitiesApi = {
     api.get<Opportunity>(`/trade-min/opportunities/${opportunityId}`).then((r) => r.data),
   // A scan runs every product × market corridor with paid Apify runs — minutes,
   // not seconds — so it gets its own 15-minute limit instead of the 2-minute default.
-  scan: (payload: { hs_codes?: string[]; target_markets?: string[] }) =>
+  scan: (payload: { hs_codes?: string[]; target_markets?: string[]; worldwide_search?: boolean }) =>
     api.post<Opportunity[]>("/trade-min/scan", payload, { timeout: 15 * 60 * 1000 }).then((r) => r.data),
   // Which demand / buyer / seller / enrichment sources the scanner can reach
   // (live / stub / open) — incl. the PortLess-owned Apify actors.
@@ -144,6 +183,8 @@ export const OpportunitiesApi = {
 export interface CounterpartyFilters {
   hs_code?: string;
   market?: string;
+  /** ISO-2 country of the company itself — "IN" lists Indian suppliers only. */
+  country?: string;
   q?: string;
   limit?: number;
 }

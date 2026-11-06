@@ -18,6 +18,9 @@ import {
   OpportunitiesApi,
   OrganizationsApi,
   ShieldApi,
+  SourcingApi,
+  MatchApi2,
+  LearningApi,
   type AutonomyPolicyUpdate,
   type CounterpartyFilters,
 } from "./endpoints";
@@ -61,6 +64,77 @@ export function useDeals(status?: string) {
     queryKey: ["deals", status ?? "all"],
     queryFn: () => DealsApi.list(status),
     refetchInterval: 15000,
+  });
+}
+
+export function useLearning() {
+  return useQuery({ queryKey: ["learning"], queryFn: LearningApi.learning, refetchInterval: 60000 });
+}
+
+export function useAddKnowledgeNote() {
+  return useMutation({ mutationFn: LearningApi.addNote });
+}
+
+export function useKnowledgeSearch(q: string) {
+  return useQuery({
+    queryKey: ["knowledge-search", q],
+    queryFn: () => LearningApi.search(q),
+    enabled: q.trim().length >= 2,
+  });
+}
+
+export function useMatchBoard(dealId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["deal", dealId, "match-board"],
+    queryFn: () => MatchApi2.board(dealId as string),
+    enabled: Boolean(dealId) && enabled,
+    refetchInterval: 30000,
+  });
+}
+
+export function useMatchActions(dealId: string) {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["deal", dealId] });
+    qc.invalidateQueries({ queryKey: ["deals"] });
+    qc.invalidateQueries({ queryKey: ["approvals"] });
+  };
+  const evaluate = useMutation({ mutationFn: () => MatchApi2.evaluate(dealId), onSuccess: invalidate });
+  const offer = useMutation({
+    mutationFn: (p: { candidateId: string; offerId: string }) => MatchApi2.indicativeOffer(dealId, p.candidateId, p.offerId),
+    onSuccess: invalidate,
+  });
+  const confirm = useMutation({
+    mutationFn: (p: { candidateId: string; offerId: string }) => MatchApi2.confirm(dealId, p.candidateId, p.offerId),
+    onSuccess: invalidate,
+  });
+  const setRequirement = useMutation({
+    mutationFn: (p: { candidateId: string; req: import("./types").BuyerRequirement }) =>
+      MatchApi2.setRequirement(dealId, p.candidateId, p.req),
+    onSuccess: invalidate,
+  });
+  const addOffer = useMutation({
+    mutationFn: (offer: import("./types").SupplierOffer) => MatchApi2.addOffer(dealId, offer),
+    onSuccess: invalidate,
+  });
+  return { evaluate, offer, confirm, setRequirement, addOffer };
+}
+
+export function useDealRfqs(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ["deal", dealId, "rfqs"],
+    queryFn: () => SourcingApi.rfqs(dealId as string),
+    enabled: Boolean(dealId),
+    refetchInterval: 30000,
+  });
+}
+
+export function useDealQuotes(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ["deal", dealId, "quotes"],
+    queryFn: () => SourcingApi.quotes(dealId as string),
+    enabled: Boolean(dealId),
+    refetchInterval: 30000,
   });
 }
 
@@ -193,11 +267,32 @@ export function useTradeSources() {
   });
 }
 
+const WORLDWIDE_KEY = "portless.scan.worldwide";
+
+/** The "Worldwide" scan toggle: also search buyers and suppliers in every country.
+ *  Remembered in this browser; every scan button reads it. Default on. */
+export function getWorldwideSearch(): boolean {
+  try {
+    return localStorage.getItem(WORLDWIDE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+export function setWorldwideSearch(on: boolean): void {
+  try {
+    localStorage.setItem(WORLDWIDE_KEY, String(on));
+  } catch {
+    // storage unavailable: the toggle still applies to this page's scans
+  }
+}
+
 export function useScanOpportunities() {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ["scan"],
-    mutationFn: () => OpportunitiesApi.scan({}),
+    mutationFn: (opts: { worldwide?: boolean } | void) =>
+      OpportunitiesApi.scan({ worldwide_search: opts?.worldwide ?? getWorldwideSearch() }),
     // Even a failed / timed-out scan request has already stored what it found
     // (the backend keeps scanning and recording), so refresh either way.
     onSettled: () => {
