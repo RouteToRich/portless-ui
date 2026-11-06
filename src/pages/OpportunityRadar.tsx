@@ -140,12 +140,6 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
           </span>
         </div>
       )}
-      {opp.source === "simulated" && (
-        <div className="rounded-lg border border-[#ff5d6c]/40 bg-[#ff5d6c]/10 px-3 py-2 text-xs text-[#ff5d6c]">
-          Demand index and price gap are <b>simulated</b> (no live Comtrade / Census / actor data for this
-          pair). Never auto-converted; start a deal only after checking the numbers yourself.
-        </div>
-      )}
 
       {/* Tariff */}
       {t && (
@@ -363,14 +357,6 @@ export function OpportunityRadar() {
   }
 
   async function handleStartDeal(opp: Opportunity) {
-    if (
-      opp.source === "simulated" &&
-      !window.confirm(
-        `Opportunity ${opp.opportunity_id} rests on SIMULATED demand numbers (no live Comtrade / Census / actor data for HS ${opp.hs_code} → ${opp.market}). The margin corridor will be a guess. Start the deal anyway?`
-      )
-    ) {
-      return;
-    }
     try {
       const deal = await createDeal.mutateAsync({
         operator_id: "OP-901",
@@ -595,19 +581,9 @@ export function OpportunityRadar() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {opp.source === "simulated" ? (
-                          <Badge
-                            variant="destructive"
-                            className="text-[10px]"
-                            title="No live demand data — numbers are a deterministic simulation"
-                          >
-                            simulated
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px]">
-                            {(opp.source ?? "trade-min").replace("apify_", "⚡ ")}
-                          </Badge>
-                        )}
+                        <Badge variant="outline" className="text-[10px]">
+                          {(opp.source ?? "trade-min").replace("apify_", "⚡ ")}
+                        </Badge>
                       </td>
                       <td className="px-4 py-3">
                         <ArbitrageBar rank={opp.arbitrage_rank} />

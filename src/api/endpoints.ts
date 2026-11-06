@@ -132,8 +132,10 @@ export const OpportunitiesApi = {
   // so the originating record stays fetchable by id for the deal Overview tab.
   get: (opportunityId: string) =>
     api.get<Opportunity>(`/trade-min/opportunities/${opportunityId}`).then((r) => r.data),
+  // A scan runs every product × market corridor with paid Apify runs — minutes,
+  // not seconds — so it gets its own 15-minute limit instead of the 2-minute default.
   scan: (payload: { hs_codes?: string[]; target_markets?: string[] }) =>
-    api.post<Opportunity[]>("/trade-min/scan", payload).then((r) => r.data),
+    api.post<Opportunity[]>("/trade-min/scan", payload, { timeout: 15 * 60 * 1000 }).then((r) => r.data),
   // Which demand / buyer / seller / enrichment sources the scanner can reach
   // (live / stub / open) — incl. the PortLess-owned Apify actors.
   sources: () => api.get<TradeSourcesResponse>("/trade-min/sources").then((r) => r.data),

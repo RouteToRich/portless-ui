@@ -196,20 +196,28 @@ export function useTradeSources() {
 export function useScanOpportunities() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ["scan"],
     mutationFn: () => OpportunitiesApi.scan({}),
-    onSuccess: () => {
+    // Even a failed / timed-out scan request has already stored what it found
+    // (the backend keeps scanning and recording), so refresh either way.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["opportunities"] });
-      // a scan also adds to the buyer / supplier directory
       qc.invalidateQueries({ queryKey: ["counterparties"] });
     },
   });
 }
 
-/** Buyers or suppliers the scanner found — independent of opportunities and deals. */
-export function useCounterparties(role: "buyer" | "supplier", filters: CounterpartyFilters = {}) {
+/** Buyers or suppliers the scanner found — independent of opportunities and deals.
+ *  Polls every 10 s while a scan is running so companies appear as they are found. */
+export function useCounterparties(
+  role: "buyer" | "supplier",
+  filters: CounterpartyFilters = {},
+  options: { live?: boolean } = {}
+) {
   return useQuery({
     queryKey: ["counterparties", role, filters],
     queryFn: () => CounterpartiesApi.list(role, filters),
+    refetchInterval: options.live ? 10_000 : false,
   });
 }
 

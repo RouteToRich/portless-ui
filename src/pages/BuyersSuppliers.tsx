@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Factory, Globe, Mail, Phone, RefreshCw, Search, Users, Zap } from "lucide-react";
 import { cn, fmtDateTime, fmtUSD, timeAgo } from "@/lib/utils";
@@ -150,12 +151,16 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
   );
 }
 
-function RolePanel({ role, q, market, hs }: { role: Role; q: string; market: string; hs: string }) {
-  const { data, isLoading, isError, refetch } = useCounterparties(role, {
-    q: q.trim() || undefined,
-    market: market.trim().toUpperCase() || undefined,
-    hs_code: hs.trim() || undefined,
-  });
+function RolePanel({ role, q, market, hs, live }: { role: Role; q: string; market: string; hs: string; live: boolean }) {
+  const { data, isLoading, isError, refetch } = useCounterparties(
+    role,
+    {
+      q: q.trim() || undefined,
+      market: market.trim().toUpperCase() || undefined,
+      hs_code: hs.trim() || undefined,
+    },
+    { live }
+  );
   const rows = data ?? [];
   const withEmail = rows.filter((r) => r.email).length;
 
@@ -185,6 +190,8 @@ function RolePanel({ role, q, market, hs }: { role: Role; q: string; market: str
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
           {q || market || hs
             ? "Nothing matches these filters."
+            : live
+            ? "Scan in progress — companies appear here as they are found (refreshing every 10 s)."
             : "Run a scan: every company it finds is listed here, even when the scan creates no opportunity or deal. Add your products on the Catalogue page so the search uses product names."}
         </p>
       </div>
@@ -206,9 +213,12 @@ export function BuyersSuppliers() {
   const [market, setMarket] = useState("");
   const [hs, setHs] = useState("");
   const scan = useScanOpportunities();
+  const qc = useQueryClient();
+  // true while a scan runs — started here or on the Opportunity Radar
+  const scanning = useIsMutating({ mutationKey: ["scan"] }) > 0;
   const { data: sourcesInfo } = useTradeSources();
-  const { data: buyers } = useCounterparties("buyer");
-  const { data: suppliers } = useCounterparties("supplier");
+  const { data: buyers } = useCounterparties("buyer", {}, { live: scanning });
+  const { data: suppliers } = useCounterparties("supplier", {}, { live: scanning });
 
   async function handleScan() {
     try {
@@ -217,7 +227,10 @@ export function BuyersSuppliers() {
         description: `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} · buyer and supplier lists updated`,
       });
     } catch {
-      toast.error("Scan failed", { description: "Check API connectivity" });
+      // The server keeps scanning and recording after the browser stops waiting.
+      toast.warning("Scan is still running on the server", {
+        description: "Companies found so far are listed; use Refresh to load more.",
+      });
     }
   }
 
@@ -231,8 +244,17 @@ export function BuyersSuppliers() {
             {sourcesInfo && !sourcesInfo.apify.token_present && " · APIFY_TOKEN not set, so no new companies are found"}
           </p>
         </div>
-        <Button size="sm" className="h-8 gap-1.5 text-xs self-start" onClick={handleScan} disabled={scan.isPending}>
-          {scan.isPending ? (
+        <div className="flex items-center gap-2 self-start">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          onClick={() => qc.invalidateQueries({ queryKey: ["counterparties"] })}
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </Button>
+        <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={handleScan} disabled={scanning}>
+          {scanning ? (
             <>
               <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Scanning…
             </>
@@ -242,6 +264,7 @@ export function BuyersSuppliers() {
             </>
           )}
         </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -309,10 +332,10 @@ export function BuyersSuppliers() {
               </div>
             </div>
             <TabsContent value="buyer" className="mt-3">
-              <RolePanel role="buyer" q={q} market={market} hs={hs} />
+              <RolePanel role="buyer" q={q} market={market} hs={hs} live={scanning} />
             </TabsContent>
             <TabsContent value="supplier" className="mt-3">
-              <RolePanel role="supplier" q={q} market={market} hs={hs} />
+              <RolePanel role="supplier" q={q} market={market} hs={hs} live={scanning} />
             </TabsContent>
           </Tabs>
         </CardContent>
