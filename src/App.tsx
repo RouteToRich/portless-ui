@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppLayout } from "./components/AppLayout";
 import { OpportunityRadar } from "./pages/OpportunityRadar";
+import { BuyersSuppliers } from "./pages/BuyersSuppliers";
 import { DealBoard } from "./pages/DealBoard";
 import { OrgDeals } from "./pages/OrgDeals";
 import { DealDetail } from "./pages/DealDetail";
@@ -62,6 +63,14 @@ export default function App() {
             element={
               <RequirePortless>
                 <OpportunityRadar />
+              </RequirePortless>
+            }
+          />
+          <Route
+            path="/counterparties"
+            element={
+              <RequirePortless>
+                <BuyersSuppliers />
               </RequirePortless>
             }
           />

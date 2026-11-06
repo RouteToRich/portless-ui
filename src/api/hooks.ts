@@ -5,6 +5,7 @@ import {
   ApprovalsApi,
   AutonomyApi,
   CatalogueApi,
+  CounterpartiesApi,
   DealmakerApi,
   DealsApi,
   DigestApi,
@@ -18,6 +19,7 @@ import {
   OrganizationsApi,
   ShieldApi,
   type AutonomyPolicyUpdate,
+  type CounterpartyFilters,
 } from "./endpoints";
 import type {
   ApprovalRecord,
@@ -195,7 +197,19 @@ export function useScanOpportunities() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => OpportunitiesApi.scan({}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["opportunities"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["opportunities"] });
+      // a scan also adds to the buyer / supplier directory
+      qc.invalidateQueries({ queryKey: ["counterparties"] });
+    },
+  });
+}
+
+/** Buyers or suppliers the scanner found — independent of opportunities and deals. */
+export function useCounterparties(role: "buyer" | "supplier", filters: CounterpartyFilters = {}) {
+  return useQuery({
+    queryKey: ["counterparties", role, filters],
+    queryFn: () => CounterpartiesApi.list(role, filters),
   });
 }
 

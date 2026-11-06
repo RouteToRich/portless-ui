@@ -4,6 +4,7 @@ import type {
   AutonomyLevel,
   BuyerCandidate,
   CatalogueView,
+  Counterparty,
   CreateDealRequest,
   Deal,
   DealException,
@@ -136,6 +137,23 @@ export const OpportunitiesApi = {
   // Which demand / buyer / seller / enrichment sources the scanner can reach
   // (live / stub / open) — incl. the PortLess-owned Apify actors.
   sources: () => api.get<TradeSourcesResponse>("/trade-min/sources").then((r) => r.data),
+};
+
+export interface CounterpartyFilters {
+  hs_code?: string;
+  market?: string;
+  q?: string;
+  limit?: number;
+}
+
+// Every buyer / supplier a scan found — with or without an opportunity or deal.
+export const CounterpartiesApi = {
+  list: (role: "buyer" | "supplier", filters: CounterpartyFilters = {}) =>
+    api
+      .get<Counterparty[]>(role === "buyer" ? "/trade-min/buyers" : "/trade-min/suppliers", {
+        params: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")),
+      })
+      .then((r) => r.data),
 };
 
 export type OnTimeout = "APPROVE" | "REJECT";

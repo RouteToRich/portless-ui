@@ -293,6 +293,36 @@ export interface Opportunity {
 export type SourceMode = "live" | "stub" | "open";
 export type SourceRole = "demand" | "buyers" | "sellers" | "tariff" | "enrichment" | "screening";
 
+/** A buyer or supplier a scan found (GET /trade-min/buyers | /trade-min/suppliers) —
+ *  kept whether or not the scan produced an opportunity or a deal. */
+export interface Counterparty {
+  id: string;
+  role: "buyer" | "supplier";
+  name: string;
+  country: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  contact_url: string | null;
+  source: string;
+  sources: string[];
+  fit_score: number | null;
+  fit_reason: string | null;
+  gstin: string | null;
+  iec: string | null;
+  /** Suppliers: USD/MT when the source states a price. */
+  estimated_fob_price_usd: number | null;
+  hs_codes: string[];
+  markets: string[];
+  opportunity_ids: string[];
+  /** "opportunity <id>" or why the latest scan produced none. */
+  last_outcome: string;
+  times_seen: number;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
 export interface TradeSource {
   name: string;
   label: string;
