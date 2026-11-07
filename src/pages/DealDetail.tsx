@@ -63,6 +63,7 @@ import { TimelineTab } from "@/components/deal/TimelineTab";
 import { JournalCard } from "@/components/deal/JournalCard";
 import { EvidencePackButtons } from "@/components/deal/EvidencePackButtons";
 import { FreightMilestoneControls } from "@/components/deal/FreightMilestoneControls";
+import { CompliancePanel } from "@/components/deal/CompliancePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -843,6 +844,9 @@ function OverviewTab({ dealId }: { dealId: string }) {
       {isProspect(deal) && <MatchBoardPanel deal={deal} />}
 
       <OutreachPanel deal={deal} />
+
+      {/* Trade compliance: product / destination / parties / price, who paid, container vs paperwork. */}
+      <CompliancePanel deal={deal} />
 
       {/* Supplier side: who was asked for a quote and what came back. */}
       {(isProspect(deal) || deal.status === "NEGOTIATION_FAILED") && <SupplierRfqPanel deal={deal} />}

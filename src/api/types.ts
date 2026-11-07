@@ -991,6 +991,9 @@ export interface RecordMilestoneRequest {
   timestamp?: string | null;
   notes?: string | null;
   source?: string;
+  /** Seal number(s) on the bill of lading — must match the inspector's seal. */
+  seal_numbers?: string[];
+  container_number?: string | null;
 }
 
 // POST /shield-link/deals/{id}/track
@@ -1048,4 +1051,57 @@ export interface ResolveApprovalRequest {
   resolved_by: string;
   note?: string;
   modified_body?: string;
+}
+
+// ── Trade compliance (GET /deals/{id}/compliance) ──────────────────────────
+export type ComplianceSeverity = "block" | "review" | "info";
+
+export interface ComplianceFinding {
+  code: string;
+  severity: ComplianceSeverity;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+export interface ComplianceCheck {
+  stage: string;
+  status: "clear" | "review" | "block";
+  findings: ComplianceFinding[];
+  checked_at: string;
+}
+
+export interface LoadingRecord {
+  container_numbers: string[];
+  seal_numbers: string[];
+  loaded_quantity_mt?: number | null;
+  hs_code?: string | null;
+  goods_description?: string | null;
+  inspector_ref?: string | null;
+  photos: string[];
+  source: string;
+  recorded_at: string;
+}
+
+export interface ComplianceRecord {
+  deal_id: string;
+  trade: ComplianceCheck | null;
+  shipment: ComplianceCheck | null;
+  payer: ComplianceCheck | null;
+  loading: LoadingRecord | null;
+  bl_seal_numbers: string[];
+  holds: string[];
+  cleared_holds: string[];
+  updated_at: string;
+}
+
+// POST /shield-link/deals/{id}/loading
+export interface LoadingRecordRequest {
+  container_numbers: string[];
+  seal_numbers: string[];
+  loaded_quantity_mt?: number | null;
+  hs_code?: string | null;
+  goods_description?: string | null;
+  inspector_ref?: string | null;
+  photos?: string[];
+  source?: string;
 }

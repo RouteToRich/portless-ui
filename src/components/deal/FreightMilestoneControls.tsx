@@ -42,13 +42,20 @@ export function FreightMilestoneControls({ dealId, freight }: { dealId: string; 
   const [milestone, setMilestone] = useState<FreightMilestone>("DELIVERED");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  const [seal, setSeal] = useState("");
   const [lastPoll, setLastPoll] = useState<string | null>(null);
 
   async function submit() {
     try {
       const res = await record.mutateAsync({
         tpoId: freight.tpo_id,
-        payload: { milestone, location: location.trim() || null, notes: notes.trim() || null, source: "operator" },
+        payload: {
+          milestone,
+          location: location.trim() || null,
+          notes: notes.trim() || null,
+          source: "operator",
+          seal_numbers: seal.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean),
+        },
       });
       if (res.status === "ignored") {
         toast.info(`Ignored — already at ${res.last_milestone ?? "a later milestone"}`);
@@ -65,6 +72,7 @@ export function FreightMilestoneControls({ dealId, freight }: { dealId: string; 
       setOpen(false);
       setLocation("");
       setNotes("");
+      setSeal("");
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       toast.error(detail ?? "Could not record the milestone");
@@ -146,6 +154,10 @@ export function FreightMilestoneControls({ dealId, freight }: { dealId: string; 
             <div className="space-y-1">
               <Label className="text-[11px]">Location</Label>
               <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Hamburg CTA / buyer warehouse" className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Seal number on the bill of lading (optional)</Label>
+              <Input value={seal} onChange={(e) => setSeal(e.target.value)} placeholder="must match the inspector's seal" className="h-8 text-xs font-mono" />
             </div>
             <div className="space-y-1">
               <Label className="text-[11px]">Notes</Label>

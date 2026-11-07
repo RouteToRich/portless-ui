@@ -25,6 +25,7 @@ import {
   type CounterpartyFilters,
 } from "./endpoints";
 import type {
+  LoadingRecordRequest,
   ApprovalRecord,
   BuyerCandidate,
   CreateDealRequest,
@@ -593,6 +594,32 @@ export function useFreightRecords(dealId: string | undefined) {
 
 // Operator-recorded carrier milestone (DELIVERED opens the acceptance window)
 // and the on-demand carrier-tracking poll.
+// Trade compliance for one deal + re-check + supervised-loading record.
+export function useDealCompliance(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ["deal-compliance", dealId],
+    queryFn: () => DealsApi.compliance(dealId as string),
+    enabled: Boolean(dealId),
+    refetchInterval: 30000,
+  });
+}
+
+export function useComplianceActions(dealId: string) {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["deal-compliance", dealId] });
+    qc.invalidateQueries({ queryKey: ["deal", dealId] });
+    qc.invalidateQueries({ queryKey: ["approvals"] });
+    qc.invalidateQueries({ queryKey: ["deal-timeline", dealId] });
+  };
+  const recheck = useMutation({ mutationFn: () => DealsApi.complianceCheck(dealId), onSuccess: invalidate });
+  const recordLoading = useMutation({
+    mutationFn: (payload: LoadingRecordRequest) => ShieldApi.recordLoading(dealId, payload),
+    onSuccess: invalidate,
+  });
+  return { recheck, recordLoading };
+}
+
 export function useFreightMilestones(dealId: string) {
   const qc = useQueryClient();
   const invalidate = () => {

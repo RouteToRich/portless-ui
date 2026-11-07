@@ -1,5 +1,9 @@
 import { api, authApi } from "./client";
 import type {
+  ComplianceCheck,
+  ComplianceRecord,
+  LoadingRecord,
+  LoadingRecordRequest,
   ApprovalRecord,
   AutonomyLevel,
   BuyerCandidate,
@@ -137,6 +141,11 @@ export const DealsApi = {
         params: { screen: opts?.screen ?? true, contacts: opts?.contacts ?? true },
       })
       .then((r) => r.data),
+  // Trade compliance: trade / payer / shipment checks, loading + seal, open holds.
+  compliance: (dealId: string) =>
+    api.get<ComplianceRecord>(`/deals/${dealId}/compliance`).then((r) => r.data),
+  complianceCheck: (dealId: string) =>
+    api.post<ComplianceCheck>(`/deals/${dealId}/compliance/check`).then((r) => r.data),
   // Every dated fact of the deal from every service, merged and sorted.
   timeline: (dealId: string) =>
     api.get<DealTimeline>(`/deals/${dealId}/timeline`).then((r) => r.data),
@@ -512,6 +521,14 @@ export const ShieldApi = {
     ),
   // Operator / tracking milestone by TPO id (no provider signature). DELIVERED
   // opens the buyer's acceptance window on the escrow.
+  // Inspector's supervised loading (container + seal) — freight waits for it.
+  recordLoading: (dealId: string, payload: LoadingRecordRequest) =>
+    api
+      .post<{ status: string; deal_id: string; loading: LoadingRecord | null }>(
+        `/shield-link/deals/${dealId}/loading`,
+        { source: "operator", ...payload }
+      )
+      .then((r) => r.data),
   recordMilestone: (tpoId: string, payload: RecordMilestoneRequest) =>
     api
       .post<{ status: string; milestone: string; deal_id: string; last_milestone?: string }>(
