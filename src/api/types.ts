@@ -802,7 +802,12 @@ export interface EmailHistoryRecord {
     | "modified_sent"
     | "rejected"
     | "failed"
+    | "blocked"
     | "received";
+  /** negotiation (agent draft) · followup · notification (templated deal e-mail) */
+  kind?: "negotiation" | "followup" | "notification";
+  /** Why the send-time safety check refused it (status "blocked"). */
+  block_reason?: string | null;
   sent_at: string | null;
   created_at: string;
   updated_at: string;

@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Send,
   Mail,
+  ShieldAlert,
 } from "lucide-react";
 import { cn, initials, timeAgo } from "@/lib/utils";
 import type { EmailHistoryRecord } from "@/api/types";
@@ -57,6 +58,12 @@ function emailStatusBadge(status: EmailHistoryRecord["status"]) {
       return (
         <Badge variant="destructive" className="gap-1">
           <X className="w-2.5 h-2.5" /> Failed
+        </Badge>
+      );
+    case "blocked":
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <ShieldAlert className="w-2.5 h-2.5" /> Blocked
         </Badge>
       );
     case "draft":
@@ -200,6 +207,14 @@ function EmailCard({ email, onResolved }: EmailCardProps) {
         <p className="text-xs font-medium text-muted-foreground">
           Re: {email.subject}
         </p>
+
+        {/* Send-time safety check refused it — say why (wrong / stale recipient, other side named…) */}
+        {email.status === "blocked" && email.block_reason && (
+          <div className="flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+            <ShieldAlert className="w-3 h-3 mt-0.5 shrink-0" />
+            <span>Not sent: {email.block_reason}</span>
+          </div>
+        )}
 
         {/* Body */}
         <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
