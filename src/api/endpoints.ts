@@ -30,6 +30,7 @@ import type {
   DownstreamHealth,
   EmailHistoryRecord,
   EnrichmentResult,
+  AcceptanceRequest,
   EscrowRecord,
   FreightRecord,
   MatchScore,
@@ -406,11 +407,12 @@ export const EscrowApi = {
   getLedger: (dealId: string) =>
     api.get<DealLedger>(`/escrow-guard/deals/${dealId}/ledger`).then((r) => r.data),
   listLedgers: () => api.get<DealLedger[]>("/escrow-guard/ledgers").then((r) => r.data),
-  // Buyer acceptance of the goods → releases the final ACCEPTED-trigger tranche.
-  accept: (escrowId: string, payload: { accepted_by?: string; notes?: string }) =>
+  // Operator relays the buyer's acceptance → opens the approval gate; approving
+  // it releases the final ACCEPTED-trigger tranche.
+  requestAcceptance: (escrowId: string, payload: { accepted_by?: string; notes?: string }) =>
     api
-      .post<EscrowRecord>(`/escrow-guard/escrows/${escrowId}/accept`, payload)
-      .then((r) => normalizeEscrow(r.data)),
+      .post<AcceptanceRequest>(`/escrow-guard/escrows/${escrowId}/request-acceptance`, payload)
+      .then((r) => r.data),
   // Buyer dispute within the inspection window — blocks every release.
   dispute: (escrowId: string, payload: { reason: string; raised_by?: string }) =>
     api

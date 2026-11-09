@@ -37,7 +37,7 @@ export function QueryState({
         <ServerCrash className="w-8 h-8 text-[#ff5d6c]" />
         <p className="text-sm font-medium text-[#ff5d6c]">Service unavailable</p>
         <p className="text-xs text-muted-foreground text-center max-w-sm">
-          Ensure the backend gateway and downstream services are running at localhost:8081
+          The server did not answer. Try again in a moment.
         </p>
         {onRetry && (
           <Button variant="outline" size="sm" onClick={onRetry}>

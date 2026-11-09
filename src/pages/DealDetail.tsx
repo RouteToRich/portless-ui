@@ -59,6 +59,7 @@ import { OutreachPanel } from "@/components/deal/OutreachPanel";
 import { SupplierRfqPanel } from "@/components/deal/SupplierRfqPanel";
 import { MatchBoardPanel } from "@/components/deal/MatchBoardPanel";
 import { isProspect } from "@/lib/prospect";
+import { useAuth } from "@/lib/auth";
 import { TimelineTab } from "@/components/deal/TimelineTab";
 import { JournalCard } from "@/components/deal/JournalCard";
 import { EvidencePackButtons } from "@/components/deal/EvidencePackButtons";
@@ -1678,6 +1679,7 @@ function EscrowActionDialog({
   onClose: () => void;
 }) {
   const action = useEscrowAction(dealId);
+  const { user } = useAuth();
   const [reason, setReason] = useState("");
 
   async function confirm() {
@@ -1691,11 +1693,17 @@ function EscrowActionDialog({
         kind: spec.kind,
         escrowId: escrow.escrow_id,
         reason: reason.trim() || undefined,
-        actor: "operator",
+        actor: user?.email ?? user?.name,
       });
-      toast.success(`${spec.title} — escrow now ${res.status}`, {
-        description: `Released ${fmtUSD(res.released_total)} · refunded ${fmtUSD(res.refunded_total)}`,
-      });
+      if ("approval_id" in res) {
+        toast.success("Buyer acceptance sent for approval", {
+          description: "The final tranche releases once it is approved in the Approvals Inbox.",
+        });
+      } else {
+        toast.success(`${spec.title} — escrow now ${res.status}`, {
+          description: `Released ${fmtUSD(res.released_total)} · refunded ${fmtUSD(res.refunded_total)}`,
+        });
+      }
       setReason("");
       onClose();
     } catch (e: unknown) {
@@ -1936,7 +1944,7 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
             disabled={!canAccept}
             title={
               canAccept
-                ? "Relay the buyer's acceptance of the goods — releases the final tranche"
+                ? "Relay the buyer's acceptance of the goods — sends the final tranche for approval"
                 : "Enabled once the escrow is funded, the final tranche is pending and no dispute is open"
             }
             onClick={() =>
@@ -1944,8 +1952,8 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
                 kind: "accept",
                 title: "Record buyer acceptance",
                 description:
-                  "Releases the final ACCEPTED-trigger tranche to PortLess on the buyer's behalf. Use only when the buyer confirmed acceptance of the goods.",
-                confirmLabel: "Release final tranche",
+                  "Opens an approval for the final ACCEPTED-trigger tranche. Use only when the buyer confirmed acceptance of the goods; the money moves once the approval is granted.",
+                confirmLabel: "Send for approval",
                 needsReason: false,
                 variant: "success",
               })
@@ -2119,6 +2127,13 @@ function LedgerCard({ ledger }: { ledger: DealLedger }) {
                 tone={ledger.supplier_balance_due ? "warn" : undefined}
               />
               <LedgerRow label="Available for payout now" value={fmtUSD(ledger.available_for_payout)} tone="good" />
+              {ledger.retained_until_acceptance ? (
+                <LedgerRow
+                  label="Held back until the buyer accepts"
+                  value={fmtUSD(ledger.retained_until_acceptance)}
+                  tone="warn"
+                />
+              ) : null}
               <LedgerRow
                 label="Realized margin so far"
                 value={ledger.realized_margin != null ? fmtUSD(ledger.realized_margin) : "—"}

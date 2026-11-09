@@ -103,6 +103,16 @@ const FLAG_INFO: Record<string, { label: string; hint: string; tone: "warn" | "i
     tone: "info",
   },
   followup: { label: "follow-up", hint: "Second touch after silence", tone: "info" },
+  supplier_retention_held: {
+    label: "holdback until buyer accepts",
+    hint: "The last part of the supplier's money waits for the buyer's acceptance of the goods",
+    tone: "info",
+  },
+  partial_payout_capped_by_escrow: {
+    label: "capped at released funds",
+    hint: "The next escrow tranche has not been released yet",
+    tone: "warn",
+  },
   auto_sourced_verified_in_corridor: {
     label: "auto-sourced",
     hint: "GST + IEC verified supplier inside the price corridor",
@@ -155,7 +165,11 @@ function PayloadDetails({ action, payload }: { action: string; payload: Record<s
             <span className="text-muted-foreground"> of {fmtUSD(owed)} owed</span>
           )}
           {amount != null && owed != null && amount + 0.01 < owed && (
-            <span className="text-[#f5a623]"> · partial (capped at funds released from escrow)</span>
+            <span className="text-[#f5a623]">
+              {payload.limited_by === "holdback"
+                ? ` · partial (${fmtUSD(num("retained_until_acceptance") ?? 0)} held back until the buyer accepts the goods)`
+                : " · partial (capped at funds released from escrow)"}
+            </span>
           )}
         </span>
       ),
@@ -372,6 +386,9 @@ export function HitlApprovalCard({
       const detail = e?.response?.data?.detail;
       if (status === 409 && detail && /different operator|countersign|already carries/i.test(detail)) {
         toast.error("Second approver must be a different operator", { description: detail });
+      } else if (status === 409 && detail && /compliance holds/i.test(detail)) {
+        // Refused by an open compliance hold — the gate is still waiting.
+        toast.error("Blocked by a compliance hold", { description: detail });
       } else if (status === 409) {
         toast.info("Already resolved — refreshing");
         onResolved();

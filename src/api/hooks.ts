@@ -25,6 +25,8 @@ import {
   type CounterpartyFilters,
 } from "./endpoints";
 import type {
+  AcceptanceRequest,
+  EscrowRecord,
   LoadingRecordRequest,
   ApprovalRecord,
   BuyerCandidate,
@@ -547,9 +549,9 @@ export function useEscrowAction(dealId: string | undefined) {
       escrowId: string;
       reason?: string;
       actor?: string;
-    }) => {
+    }): Promise<AcceptanceRequest | EscrowRecord> => {
       if (kind === "accept") {
-        return EscrowApi.accept(escrowId, { accepted_by: actor ?? "operator", notes: reason });
+        return EscrowApi.requestAcceptance(escrowId, { accepted_by: actor, notes: reason });
       }
       if (kind === "dispute") {
         return EscrowApi.dispute(escrowId, { reason: reason ?? "", raised_by: actor ?? "operator" });
@@ -563,6 +565,7 @@ export function useEscrowAction(dealId: string | undefined) {
       return EscrowApi.refund(escrowId, { reason: reason ?? "" });
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["approvals"] });
       qc.invalidateQueries({ queryKey: ["escrow-hold", dealId] });
       qc.invalidateQueries({ queryKey: ["escrow-ledger", dealId] });
       qc.invalidateQueries({ queryKey: ["escrow-journal", dealId] });

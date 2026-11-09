@@ -931,6 +931,13 @@ export interface PayoutRecord {
 }
 
 // GET /escrow-guard/deals/{id}/ledger and GET /escrow-guard/ledgers
+export interface AcceptanceRequest {
+  approval_id: string;
+  status: string;
+  deal_id: string;
+  escrow_id: string;
+}
+
 export interface DealLedger {
   deal_id: string;
   currency: string;
@@ -948,6 +955,7 @@ export interface DealLedger {
   payouts_total: number;
   payouts_pending: number;
   available_for_payout: number;
+  retained_until_acceptance?: number;
   supplier_owed?: number | null;
   supplier_balance_due?: number | null;
   realized_margin?: number | null;
