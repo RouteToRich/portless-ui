@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { useApprovals, useGatewayHealth } from "@/api/hooks";
+import { KillSwitch } from "@/components/KillSwitch";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -265,6 +266,8 @@ export function AppLayout() {
               className="pl-8 h-8 text-xs bg-secondary border-border"
             />
           </div>
+
+          {user?.is_portless && <KillSwitch />}
 
           {/* Notification bell — Approvals Inbox isn't reachable for non-Portless users */}
           {user?.is_portless && (

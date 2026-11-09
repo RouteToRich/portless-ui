@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { ExtendPiButton } from "@/components/deal/ExtendPiButton";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -1524,6 +1525,7 @@ function DocumentsTab({ dealId }: { dealId: string }) {
             <p className="text-sm text-muted-foreground">No PI or PO issued yet</p>
           ) : (
             <div className="space-y-2">
+              {contracts?.pi?.status === "SENT" && <ExtendPiButton piId={contracts.pi.pi_id} dealId={dealId} />}
               {contractRows.map((c) => (
                 <div
                   key={c.id}
@@ -1696,8 +1698,11 @@ function EscrowActionDialog({
         actor: user?.email ?? user?.name,
       });
       if ("approval_id" in res) {
-        toast.success("Buyer acceptance sent for approval", {
-          description: "The final tranche releases once it is approved in the Approvals Inbox.",
+        toast.success(spec.kind === "refund" ? "Refund sent for approval" : "Buyer acceptance sent for approval", {
+          description:
+            spec.kind === "refund"
+              ? "The money returns to the buyer once it is approved in the Approvals Inbox."
+              : "The final tranche releases once it is approved in the Approvals Inbox.",
         });
       } else {
         toast.success(`${spec.title} — escrow now ${res.status}`, {
@@ -1991,8 +1996,8 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
                 kind: "refund",
                 title: `Refund undisbursed balance (${fmtUSD(undisbursed)})`,
                 description:
-                  "Returns everything not yet released to the buyer. Already-released tranches cannot be clawed back. A deal in DISPUTE moves to REFUNDED.",
-                confirmLabel: `Refund ${fmtUSD(undisbursed)}`,
+                  "Opens an approval. Once approved, everything not yet released returns to the buyer. Already-released tranches cannot be clawed back. A deal in DISPUTE moves to REFUNDED.",
+                confirmLabel: "Send for approval",
                 needsReason: true,
                 variant: "destructive",
               })

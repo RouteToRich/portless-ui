@@ -931,6 +931,13 @@ export interface PayoutRecord {
 }
 
 // GET /escrow-guard/deals/{id}/ledger and GET /escrow-guard/ledgers
+export interface KillSwitchState {
+  paused: boolean;
+  reason: string | null;
+  by: string | null;
+  at: string | null;
+}
+
 export interface AcceptanceRequest {
   approval_id: string;
   status: string;

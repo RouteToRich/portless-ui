@@ -62,6 +62,7 @@ const DETAIL_ACTIONS = new Set([
   "RELEASE_SUPPLIER_PAYOUT",
   "CONFIRM_COUNTERPARTY_RISK",
   "CONFIRM_BUYER_ACCEPTANCE",
+  "REFUND_ESCROW",
   "SEND_BUYER_OUTREACH",
   "RESOLVE_EXCEPTION",
   "SEND_INDICATIVE_OFFER",
@@ -87,6 +88,21 @@ const PLAYBOOK_EFFECT: Record<string, { label: string; effect: string; tone: "wa
 
 // Risk flags with a specific meaning get their own wording / colour.
 const FLAG_INFO: Record<string, { label: string; hint: string; tone: "warn" | "info" | "ok" | "bad" }> = {
+  premature_funds_claim: {
+    label: "says money is in escrow",
+    hint: "The draft says escrow money is already there; nothing is funded during a negotiation",
+    tone: "bad",
+  },
+  platform_paused: {
+    label: "created while paused",
+    hint: "Would have run by itself, but the platform was paused, so it waits for a person",
+    tone: "warn",
+  },
+  pi_expired: {
+    label: "PI expired",
+    hint: "Extend the Proforma Invoice before an acceptance can be recorded",
+    tone: "bad",
+  },
   four_eyes_required: {
     label: "four-eyes",
     hint: "Two different operators must approve (FOUR_EYES_THRESHOLD_USD)",
@@ -196,6 +212,12 @@ function PayloadDetails({ action, payload }: { action: string; payload: Record<s
     rows.push({ label: "Escrow", value: <span className="font-mono">{str(payload.escrow_id) ?? "—"}</span> });
     rows.push({ label: "Accepted by", value: str(payload.accepted_by) ?? "—" });
     rows.push({ label: "Effect", value: "releases the final ACCEPTED-trigger tranche to PortLess" });
+  }
+  if (action === "REFUND_ESCROW") {
+    rows.push({ label: "Escrow", value: <span className="font-mono">{str(payload.escrow_id) ?? "—"}</span> });
+    rows.push({ label: "Requested by", value: str(payload.requested_by) ?? "—" });
+    rows.push({ label: "Reason", value: str(payload.reason) ?? "—" });
+    rows.push({ label: "Effect", value: "returns the undisbursed balance to the buyer" });
   }
   if (action === "SEND_INDICATIVE_OFFER") {
     const low = numv(payload.price_low_usd_per_mt);

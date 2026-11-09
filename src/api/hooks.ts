@@ -532,6 +532,18 @@ export function useDealJournal(dealId: string | undefined) {
   });
 }
 
+export function useKillSwitch() {
+  return useQuery({ queryKey: ["kill-switch"], queryFn: AutonomyApi.killSwitch, refetchInterval: 15000 });
+}
+
+export function useSetKillSwitch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: AutonomyApi.setKillSwitch,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["kill-switch"] }),
+  });
+}
+
 export type EscrowActionKind = "accept" | "dispute" | "refund" | "open_window" | "clear_dispute";
 
 // Operator actions on an escrow (buyer acceptance relay, dispute, refund) —
@@ -562,7 +574,7 @@ export function useEscrowAction(dealId: string | undefined) {
       if (kind === "clear_dispute") {
         return EscrowApi.clearDispute(escrowId, { reason: reason || "resolved" });
       }
-      return EscrowApi.refund(escrowId, { reason: reason ?? "" });
+      return EscrowApi.requestRefund(escrowId, { reason: reason ?? "" });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["approvals"] });

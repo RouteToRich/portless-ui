@@ -1,5 +1,6 @@
 import { api, authApi } from "./client";
 import type {
+  KillSwitchState,
   ComplianceCheck,
   ComplianceRecord,
   LoadingRecord,
@@ -260,6 +261,9 @@ export interface AutonomyPolicyUpdate {
 // default / value threshold per action class and writes overrides; null clears
 // an override so env/default applies again.
 export const AutonomyApi = {
+  killSwitch: () => api.get<KillSwitchState>("/hitl-approval/kill-switch").then((r) => r.data),
+  setKillSwitch: (payload: { paused: boolean; reason: string }) =>
+    api.post<KillSwitchState>("/hitl-approval/kill-switch", payload).then((r) => r.data),
   get: () =>
     api.get<AutonomyPolicyResponse>("/hitl-approval/autonomy-policy").then((r) => r.data),
   save: (update: AutonomyPolicyUpdate) =>
@@ -418,11 +422,12 @@ export const EscrowApi = {
     api
       .post<EscrowRecord>(`/escrow-guard/escrows/${escrowId}/dispute`, payload)
       .then((r) => normalizeEscrow(r.data)),
-  // Refund the undisbursed balance to the buyer (DISPUTE → REFUNDED).
-  refund: (escrowId: string, payload: { reason: string }) =>
+  // Operator asks to refund the undisbursed balance → opens the approval gate;
+  // approving it sends the money back to the buyer (DISPUTE → REFUNDED).
+  requestRefund: (escrowId: string, payload: { reason: string }) =>
     api
-      .post<EscrowRecord>(`/escrow-guard/escrows/${escrowId}/refund`, payload)
-      .then((r) => normalizeEscrow(r.data)),
+      .post<AcceptanceRequest>(`/escrow-guard/escrows/${escrowId}/request-refund`, payload)
+      .then((r) => r.data),
   // Operator confirms delivery → the buyer's acceptance window starts
   // (idempotent; waits for pending proof tranches).
   openWindow: (escrowId: string, payload: { reason: string }) =>
@@ -576,6 +581,8 @@ export const DealmakerApi = {
     api
       .get<DealmakerDealDocuments>(`/dealmaker/deals/${dealId}/documents`)
       .then((r) => r.data),
+  extendPi: (piId: string, payload: { validity_days: number; reason: string }) =>
+    api.post(`/dealmaker/pi/${piId}/extend`, payload).then((r) => r.data),
 };
 
 // ── Document file streaming ─────────────────────────────────────────────────
