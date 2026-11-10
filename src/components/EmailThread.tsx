@@ -10,6 +10,9 @@ import {
   Send,
   Mail,
   ShieldAlert,
+  Inbox,
+  MailWarning,
+  Ban,
 } from "lucide-react";
 import { cn, initials, timeAgo } from "@/lib/utils";
 import type { EmailHistoryRecord } from "@/api/types";
@@ -19,6 +22,16 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const KIND_LABEL: Record<string, string> = {
+  outreach_intro: "Introduction",
+  outreach_followup: "Follow-up",
+  outreach_reply: "Reply to introduction",
+  rfq: "RFQ",
+  rfq_reply: "Quotation",
+  indicative_offer: "Indicative offer",
+  notification: "Deal update",
+};
 
 // 409 = already resolved (e.g. a double-click, or another operator/tab got
 // there first) — the request was correctly rejected, not failed. Refresh
@@ -36,10 +49,27 @@ function emailStatusBadge(status: EmailHistoryRecord["status"]) {
         </Badge>
       );
     case "sent":
-    case "received":
       return (
         <Badge variant="success" className="gap-1">
-          <CheckCheck className="w-2.5 h-2.5" /> Sent
+          <CheckCheck className="w-2.5 h-2.5" /> Delivered
+        </Badge>
+      );
+    case "received":
+      return (
+        <Badge variant="info" className="gap-1">
+          <Inbox className="w-2.5 h-2.5" /> Received
+        </Badge>
+      );
+    case "logged_only":
+      return (
+        <Badge variant="warning" className="gap-1" title="No outbound mailbox configured — the e-mail was logged, not delivered">
+          <MailWarning className="w-2.5 h-2.5" /> Not delivered · logged only
+        </Badge>
+      );
+    case "skipped":
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Ban className="w-2.5 h-2.5" /> Skipped
         </Badge>
       );
     case "modified_sent":
@@ -192,7 +222,7 @@ function EmailCard({ email, onResolved }: EmailCardProps) {
             <span className="text-xs font-semibold">{senderName}</span>
             <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
               <Mail className="w-3 h-3" />
-              <span className="truncate max-w-[200px]">{isOutbound ? email.to_address : email.from_address}</span>
+              <span className="truncate max-w-[200px]">{isOutbound ? email.to_address || "no address on file" : email.from_address}</span>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -215,6 +245,22 @@ function EmailCard({ email, onResolved }: EmailCardProps) {
             <span>Not sent: {email.block_reason}</span>
           </div>
         )}
+
+        {/* Did not reach the counterparty — say why (no mailbox, no address, transport error) */}
+        {(email.status === "logged_only" || email.status === "skipped" || email.status === "failed") &&
+          email.delivery_note && (
+            <div
+              className={cn(
+                "flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-xs",
+                email.status === "failed"
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-[rgba(245,166,35,0.4)] bg-[rgba(245,166,35,0.1)] text-[#f5a623]"
+              )}
+            >
+              <MailWarning className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>{email.delivery_note}</span>
+            </div>
+          )}
 
         {/* Body */}
         <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
@@ -242,7 +288,9 @@ function EmailCard({ email, onResolved }: EmailCardProps) {
         {/* Round badge */}
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-[9px]">
-            Round {email.round_no}
+            {email.kind === "notification" && email.notice_kind
+              ? email.notice_kind.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+              : KIND_LABEL[email.kind ?? ""] ?? `Round ${email.round_no}`}
           </Badge>
           <Badge variant="secondary" className="text-[9px] capitalize">
             {email.party}
@@ -358,7 +406,7 @@ export function EmailThread({ emails, isLoading, onResolved = () => {} }: EmailT
   }
 
   const sorted = [...emails].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    (a, b) => new Date(a.sent_at ?? a.created_at).getTime() - new Date(b.sent_at ?? b.created_at).getTime()
   );
 
   return (

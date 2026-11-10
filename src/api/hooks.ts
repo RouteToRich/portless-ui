@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE_PATH, SESSION_EVENT, TOKEN_KEY } from "./client";
+import { isAutomationMode } from "@/lib/automationMode";
 import {
   ApprovalsApi,
   AutonomyApi,
@@ -199,6 +200,16 @@ export function useDealTimeline(dealId: string | undefined, options?: { enabled?
   });
 }
 
+// Correspondence log: what the buyer and the supplier were told, and whether it arrived.
+export function useDealNotifications(dealId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["deal-notifications", dealId],
+    queryFn: () => DealsApi.notifications(dealId as string),
+    enabled: Boolean(dealId) && (options?.enabled ?? true),
+    refetchInterval: 20000,
+  });
+}
+
 // Buyer outreach funnel actions: contact the next candidates / skip one / add one.
 export function useOutreach(dealId: string) {
   const qc = useQueryClient();
@@ -368,6 +379,7 @@ export function useApprovalStream() {
   const baseURL = (import.meta.env.VITE_SSE_BASE_URL ?? "").trim().replace(/\/+$/, "") || API_BASE_PATH;
 
   useEffect(() => {
+    if (isAutomationMode()) return; // the stream belongs to the live backend; pages poll here
     let es: EventSource | undefined;
     let retryTimeout: ReturnType<typeof setTimeout>;
 
@@ -609,6 +621,17 @@ export function useFreightRecords(dealId: string | undefined) {
 
 // Operator-recorded carrier milestone (DELIVERED opens the acceptance window)
 // and the on-demand carrier-tracking poll.
+// Profit breakdown for one deal (404 until a buyer and supplier price exist).
+export function useDealProfit(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ["deal-profit", dealId],
+    queryFn: () => DealsApi.profit(dealId as string),
+    enabled: Boolean(dealId),
+    refetchInterval: 30000,
+    retry: false,
+  });
+}
+
 // Trade compliance for one deal + re-check + supervised-loading record.
 export function useDealCompliance(dealId: string | undefined) {
   return useQuery({

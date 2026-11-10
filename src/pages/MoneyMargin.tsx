@@ -426,6 +426,9 @@ export function MoneyMargin() {
                     </td>
                     <td className="px-4 py-3 text-right font-medium">
                       {fmtUSD(deal.est_margin_usd)}
+                      {deal.est_margin_pct != null && (
+                        <span className="ml-1 text-xs text-muted-foreground">{fmtPct(deal.est_margin_pct)}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span
@@ -438,6 +441,9 @@ export function MoneyMargin() {
                       >
                         {fmtUSD(deal.realized_margin_usd)}
                       </span>
+                      {deal.realized_margin_pct != null && (
+                        <span className="ml-1 text-xs text-muted-foreground">{fmtPct(deal.realized_margin_pct)}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-[#f5a623] font-medium">
                       {fmtPct(deal.margin_floor_pct)}

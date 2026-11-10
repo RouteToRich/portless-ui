@@ -28,7 +28,8 @@ const MILESTONES: { value: FreightMilestone; label: string; hint: string }[] = [
 const TRACK_STATUS_TEXT: Record<string, string> = {
   ok: "Milestone recorded from the carrier",
   unchanged: "No new milestone — still where it was",
-  stub: "Carrier-tracking actor not configured (APIFY_TOKEN / container-tracking-ai) — record the milestone by hand or wait for the fallback window",
+  stub: "Carrier tracking not configured (APIFY_TOKEN unset) — record the milestone by hand or wait for the fallback window",
+  source_refused: "The Apify plan cannot run the public carrier Actors — record the milestone by hand, use the forwarder webhook, or upgrade the plan",
   no_booking: "No freight booking on this deal",
   no_reference: "Booking has no container number or carrier reference to track",
   no_event: "The carrier returned no event for this reference yet",
@@ -86,6 +87,7 @@ export function FreightMilestoneControls({ dealId, freight }: { dealId: string; 
       setLastPoll(`${res.status}${res.milestone ? ` → ${res.milestone}` : ""}`);
       if (res.status === "ok") toast.success(text, { description: res.milestone });
       else if (res.status === "error") toast.error(text, { description: res.error });
+      else if (res.status === "source_refused") toast.warning(text, { description: res.detail });
       else toast.info(text);
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;

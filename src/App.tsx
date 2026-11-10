@@ -14,6 +14,7 @@ import { AutonomySettings } from "./pages/AutonomySettings";
 import { Catalogue } from "./pages/Catalogue";
 import { SystemHealth } from "./pages/SystemHealth";
 import { OrganizationsAdmin } from "./pages/OrganizationsAdmin";
+import { Automation } from "./pages/Automation";
 import { Login } from "./pages/Login";
 import { useAuth } from "./lib/auth";
 
@@ -121,6 +122,14 @@ export default function App() {
             element={
               <RequirePortless>
                 <Catalogue />
+              </RequirePortless>
+            }
+          />
+          <Route
+            path="/automation"
+            element={
+              <RequirePortless>
+                <Automation />
               </RequirePortless>
             }
           />

@@ -1,5 +1,9 @@
 import { api, authApi } from "./client";
 import type {
+  DealProfit,
+  AutomationCaseDetail,
+  AutomationCaseRow,
+  AutomationStatus,
   KillSwitchState,
   ComplianceCheck,
   ComplianceRecord,
@@ -16,6 +20,7 @@ import type {
   DealJournal,
   DealLedger,
   DealTimeline,
+  DealCorrespondenceLog,
   DigestSendResult,
   OperatorDigest,
   ProductLine,
@@ -143,6 +148,9 @@ export const DealsApi = {
         params: { screen: opts?.screen ?? true, contacts: opts?.contacts ?? true },
       })
       .then((r) => r.data),
+  // Sale − supplier = spread − PortLess costs = profit.
+  profit: (dealId: string) =>
+    api.get<DealProfit>(`/deals/${dealId}/profit`).then((r) => r.data),
   // Trade compliance: trade / payer / shipment checks, loading + seal, open holds.
   compliance: (dealId: string) =>
     api.get<ComplianceRecord>(`/deals/${dealId}/compliance`).then((r) => r.data),
@@ -151,6 +159,9 @@ export const DealsApi = {
   // Every dated fact of the deal from every service, merged and sorted.
   timeline: (dealId: string) =>
     api.get<DealTimeline>(`/deals/${dealId}/timeline`).then((r) => r.data),
+  // Every e-mail to / from the buyer and the supplier with its delivery outcome.
+  notifications: (dealId: string) =>
+    api.get<DealCorrespondenceLog>(`/deals/${dealId}/notifications`).then((r) => r.data),
   // Hand-over pack (deal, parties, PI/PO, document hashes, orders, ledger +
   // journal, approvals, exceptions, correspondence, timeline, SHA-256).
   evidencePackJson: (dealId: string) =>
@@ -260,6 +271,23 @@ export interface AutonomyPolicyUpdate {
 // Autonomy Settings page reads the effective level / timeout / on-timeout
 // default / value threshold per action class and writes overrides; null clears
 // an override so env/default applies again.
+export const AutomationApi = {
+  status: () => api.get<AutomationStatus>("/automation/status").then((r) => r.data),
+  cases: (runId?: string | null) =>
+    api
+      .get<{ run_id: string | null; cases: AutomationCaseRow[] }>("/automation/cases", { params: runId ? { run_id: runId } : undefined })
+      .then((r) => r.data),
+  caseDetail: (tcId: string, runId?: string | null) =>
+    api
+      .get<AutomationCaseDetail>(`/automation/cases/${tcId}`, { params: runId ? { run_id: runId } : undefined })
+      .then((r) => r.data),
+  start: (payload: { scope: "all" | "catalogue" | "journeys" | "live"; phase?: string }) =>
+    api.post<{ run_id: string }>("/automation/runs", payload).then((r) => r.data),
+  stop: () => api.post("/automation/runs/stop").then((r) => r.data),
+  clear: (scope: "test_data" | "everything") =>
+    api.post<{ database: string; deleted: number }>("/automation/clear", { scope }).then((r) => r.data),
+};
+
 export const AutonomyApi = {
   killSwitch: () => api.get<KillSwitchState>("/hitl-approval/kill-switch").then((r) => r.data),
   setKillSwitch: (payload: { paused: boolean; reason: string }) =>

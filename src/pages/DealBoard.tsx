@@ -121,6 +121,7 @@ function DealCard({ deal, onClick }: DealCardProps) {
             <span className="text-muted-foreground">
               Est:{" "}
               <span className="text-foreground font-medium">{fmtUSD(deal.est_margin_usd)}</span>
+              {deal.est_margin_pct != null && <span> · {fmtPct(deal.est_margin_pct)}</span>}
             </span>
           )}
           {deal.margin_floor_pct != null && (
@@ -401,6 +402,9 @@ export function DealBoard() {
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-medium">
                         {fmtUSD(deal.est_margin_usd)}
+                        {deal.est_margin_pct != null && (
+                          <span className="ml-1 text-xs text-muted-foreground">{fmtPct(deal.est_margin_pct)}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right text-xs text-muted-foreground">
                         {timeAgo(deal.created_at)}

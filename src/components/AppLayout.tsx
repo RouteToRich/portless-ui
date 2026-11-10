@@ -27,6 +27,9 @@ import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { useApprovals, useGatewayHealth } from "@/api/hooks";
 import { KillSwitch } from "@/components/KillSwitch";
+import { AutomationToggle } from "@/components/AutomationToggle";
+import { useAutomationMode } from "@/lib/automationMode";
+import { FlaskConical } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -67,6 +70,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/exceptions":         "Exceptions",
   "/catalogue":          "Catalogue",
   "/autonomy":           "Autonomy Settings",
+  "/automation":         "Automation",
   "/health":             "System Health",
   "/admin/organizations": "Organizations",
 };
@@ -92,7 +96,10 @@ export function AppLayout() {
 
   const pendingCount = approvals?.length ?? 0;
   const isOnline = !healthError && health?.status === "ok";
-  const navItems = user?.is_portless ? [...NAV, ...PORTLESS_NAV] : NON_PORTLESS_NAV;
+  const automationOn = useAutomationMode();
+  const navItems = user?.is_portless
+    ? [...NAV, ...PORTLESS_NAV, ...(automationOn ? [{ to: "/automation", label: "Automation", icon: FlaskConical }] : [])]
+    : NON_PORTLESS_NAV;
 
   const pageTitle =
     location.pathname === "/deals"
@@ -267,6 +274,7 @@ export function AppLayout() {
             />
           </div>
 
+          {user?.is_portless && <AutomationToggle />}
           {user?.is_portless && <KillSwitch />}
 
           {/* Notification bell — Approvals Inbox isn't reachable for non-Portless users */}
@@ -318,6 +326,12 @@ export function AppLayout() {
             {isOnline ? "Live" : "Offline"}
           </Badge>
         </header>
+
+        {automationOn && user?.is_portless && (
+          <div role="status" className="px-4 lg:px-6 py-1.5 text-xs font-medium bg-[rgba(245,166,35,0.15)] text-[#f5a623] border-b border-[rgba(245,166,35,0.4)]">
+            Automation mode: every page shows the portless_automation database. Nothing here touches live data or e-mails anyone.
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-auto scrollbar-thin">

@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from "axios";
+import { isAutomationMode } from "@/lib/automationMode";
 
 // ── Everything goes through the RouteToRich API gateway ─────────────────────
 //
@@ -43,6 +44,23 @@ function attachToken(config: InternalAxiosRequestConfig) {
   return config;
 }
 api.interceptors.request.use(attachToken);
+
+// Automation mode: every data request is answered from portless_automation.
+// Sign-in and the automation dashboard itself stay on the main backend.
+function isStaff(): boolean {
+  try {
+    return Boolean(JSON.parse(localStorage.getItem(USER_KEY) ?? "null")?.is_portless);
+  } catch {
+    return false;
+  }
+}
+api.interceptors.request.use((config) => {
+  const url = config.url ?? "";
+  if (isAutomationMode() && isStaff() && url !== "/health" && !url.startsWith("/identity") && !url.startsWith("/automation")) {
+    config.url = `/automation/view${url}`;
+  }
+  return config;
+});
 authApi.interceptors.request.use(attachToken);
 
 // ── Session storage + announcements ─────────────────────────────────────────

@@ -344,6 +344,9 @@ export interface Deal {
   margin_floor_pct?: number | null;
   est_margin_usd?: number | null;
   realized_margin_usd?: number | null;
+  /** Profit as % of the sale (PI) value, after PortLess's own costs. */
+  est_margin_pct?: number | null;
+  realized_margin_pct?: number | null;
   parties: Party[];
   // Trade-Min / Match Engine linkage (seeded at deal creation)
   opportunity_id?: string | null;
@@ -803,11 +806,19 @@ export interface EmailHistoryRecord {
     | "rejected"
     | "failed"
     | "blocked"
-    | "received";
-  /** negotiation (agent draft) · followup · notification (templated deal e-mail) */
-  kind?: "negotiation" | "followup" | "notification";
+    | "received"
+    /** Approved, but no outbound mailbox is configured — logged, NOT delivered. */
+    | "logged_only"
+    /** A deal notice that could not be addressed (no thread / no address). */
+    | "skipped";
+  /** negotiation (agent draft) · followup · notification (templated deal e-mail) · outreach_* · rfq … */
+  kind?: string;
+  /** For kind "notification": which deal notice (pi_issued, escrow_funded, qc_passed …). */
+  notice_kind?: string | null;
   /** Why the send-time safety check refused it (status "blocked"). */
   block_reason?: string | null;
+  /** Why it did not reach the counterparty (logged_only / skipped / failed). */
+  delivery_note?: string | null;
   sent_at: string | null;
   created_at: string;
   updated_at: string;
@@ -823,6 +834,46 @@ export interface NegotiationEmailThread extends NegotiationSession {
   supplier_quote_price: number;
   emails: EmailHistoryRecord[];
   pending_approval_count: number;
+}
+
+/** One word for whether a counterparty e-mail arrived. */
+export type EmailDelivery =
+  | "delivered"
+  | "logged_only"
+  | "pending"
+  | "skipped"
+  | "failed"
+  | "blocked"
+  | "rejected"
+  | "received";
+
+/** GET /deals/{id}/notifications — mirrors notifications.deal_correspondence_log */
+export interface CorrespondenceEntry {
+  email_id: string;
+  party: "buyer" | "supplier" | string;
+  direction: "outbound" | "inbound";
+  kind: string;
+  notice_kind: string | null;
+  label: string;
+  stage: string | null;
+  status: EmailHistoryRecord["status"];
+  delivery: EmailDelivery;
+  delivery_note: string | null;
+  to_address: string;
+  from_address: string;
+  subject: string;
+  body: string;
+  approval_id: string | null;
+  at: string;
+  created_at: string;
+}
+
+export interface DealCorrespondenceLog {
+  deal_id: string;
+  mailbox_configured: boolean;
+  notifications_enabled: boolean;
+  summary: Record<string, Partial<Record<EmailDelivery, number>>>;
+  entries: CorrespondenceEntry[];
 }
 
 export interface RunRoundRequest {
@@ -931,6 +982,59 @@ export interface PayoutRecord {
 }
 
 // GET /escrow-guard/deals/{id}/ledger and GET /escrow-guard/ledgers
+export interface AutomationRun {
+  run_id: string;
+  status: string;
+  scope: string;
+  planned?: number;
+  done?: number;
+  totals?: Record<string, number>;
+  started_at?: string;
+  finished_at?: string;
+}
+
+export interface AutomationStatus {
+  database: string;
+  catalogue: { sha: string; cases: number; iterations: number };
+  run: AutomationRun | null;
+  test_data: Record<string, number>;
+  test_data_total: number;
+  live_counterparties: { buyer: number; supplier: number };
+}
+
+export interface AutomationCaseRow {
+  tc_id: string;
+  title: string;
+  phase: string;
+  layer: string;
+  priority: string;
+  kind: string;
+  iterations: number;
+  status: string;
+  passed: number;
+  failed: number;
+  duration_ms: number;
+  error: string | null;
+}
+
+export interface AutomationResult {
+  status: string;
+  row?: Record<string, string>;
+  error?: string | null;
+  deal_id?: string | null;
+  duration_ms?: number;
+  steps: { text: string; ok: boolean; detail?: string }[];
+  emails: { to: string; subject: string; body: string }[];
+  transcript?: string;
+}
+
+export interface AutomationCaseDetail {
+  tc_id: string;
+  run_id: string | null;
+  definition: { title: string; steps: string[] };
+  results: AutomationResult[];
+}
+
 export interface KillSwitchState {
   paused: boolean;
   reason: string | null;
@@ -1013,11 +1117,13 @@ export interface RecordMilestoneRequest {
 
 // POST /shield-link/deals/{id}/track
 export interface TrackingPollResult {
-  status: "no_booking" | "no_reference" | "stub" | "unchanged" | "ok" | "no_event" | "error" | "ignored" | string;
+  status: "no_booking" | "no_reference" | "stub" | "source_refused" | "unchanged" | "ok" | "no_event" | "error" | "ignored" | string;
   deal_id: string;
   tpo_id?: string;
   milestone?: string;
   error?: string;
+  /** Why the carrier lookup was refused (status "source_refused"). */
+  detail?: string;
 }
 
 export interface DocumentRecord {
@@ -1095,6 +1201,38 @@ export interface LoadingRecord {
   photos: string[];
   source: string;
   recorded_at: string;
+}
+
+/** GET /deals/{id}/profit — from sale value to PortLess's profit, line by line. */
+export interface ProfitCostLine {
+  key: string;
+  label: string;
+  usd: number;
+  per_mt: number;
+  pct_of_sale: number;
+  /** actual = provider fee / escrow charge; incurred = booked, valued at the estimate; estimate = not yet incurred */
+  status: "actual" | "incurred" | "estimate";
+}
+
+export interface DealProfit {
+  deal_id: string;
+  quantity_mt: number;
+  currency: string;
+  sale_value: number;
+  buyer_price_per_mt: number;
+  sale_basis: string;
+  supplier_cost: number;
+  supplier_price_per_mt: number;
+  supplier_basis: string;
+  gross_spread: number;
+  gross_spread_pct: number;
+  costs: ProfitCostLine[];
+  costs_total: number;
+  costs_pct: number;
+  net_profit: number;
+  net_profit_pct: number;
+  realized_margin?: number | null;
+  estimates_left: number;
 }
 
 export interface ComplianceRecord {

@@ -46,6 +46,7 @@ import {
   useDealmakerDocuments,
   useDocuments,
   useMatchScore,
+  useDealProfit,
   useOpportunity,
   type EscrowActionKind,
 } from "@/api/hooks";
@@ -62,6 +63,7 @@ import { MatchBoardPanel } from "@/components/deal/MatchBoardPanel";
 import { isProspect } from "@/lib/prospect";
 import { useAuth } from "@/lib/auth";
 import { TimelineTab } from "@/components/deal/TimelineTab";
+import { NotificationsTab } from "@/components/deal/NotificationsTab";
 import { JournalCard } from "@/components/deal/JournalCard";
 import { EvidencePackButtons } from "@/components/deal/EvidencePackButtons";
 import { FreightMilestoneControls } from "@/components/deal/FreightMilestoneControls";
@@ -762,6 +764,60 @@ function EnrichButton({ dealId }: { dealId: string }) {
   );
 }
 
+const PROFIT_STATUS: Record<string, { label: string; color: string }> = {
+  actual: { label: "actual", color: "#2ec28a" },
+  incurred: { label: "booked", color: "#4f8cff" },
+  estimate: { label: "estimate", color: "#f5a623" },
+};
+
+function ProfitBreakdown({ dealId }: { dealId: string }) {
+  const { data: p } = useDealProfit(dealId);
+  if (!p) return null;
+  const row = (label: string, usd: number, pct: number | null, opts: { strong?: boolean; minus?: boolean; color?: string; tag?: string; tagColor?: string; sub?: string } = {}) => (
+    <div className={cn("flex items-baseline justify-between gap-3 py-1.5", opts.strong && "border-t border-border mt-1 pt-2")}>
+      <div className="min-w-0">
+        <span className={cn("text-sm", opts.strong ? "font-semibold" : "text-muted-foreground")}>{label}</span>
+        {opts.tag && (
+          <span className="ml-2 text-[10px] uppercase tracking-wide" style={{ color: opts.tagColor }}>{opts.tag}</span>
+        )}
+        {opts.sub && <p className="text-[10px] text-muted-foreground">{opts.sub}</p>}
+      </div>
+      <div className="text-right shrink-0 tabular-nums">
+        <span className={cn("text-sm", opts.strong && "font-bold text-base")} style={{ color: opts.color }}>
+          {opts.minus ? "− " : ""}{fmtUSD(usd)}
+        </span>
+        {pct != null && <span className="ml-2 text-xs text-muted-foreground w-12 inline-block">{fmtPct(pct)}</span>}
+      </div>
+    </div>
+  );
+  return (
+    <Card>
+      <CardHeader className="pb-1">
+        <CardTitle className="text-sm">Profit breakdown</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          {p.quantity_mt} MT · % of sale value
+          {p.estimates_left > 0 && ` · ${p.estimates_left} cost line(s) still estimated`}
+        </p>
+      </CardHeader>
+      <CardContent className="divide-y-0">
+        {row("Sale value (buyer)", p.sale_value, 100, { sub: `${fmtUSD(p.buyer_price_per_mt)}/MT CIF · from the ${p.sale_basis}` })}
+        {row("Supplier cost", p.supplier_cost, (p.supplier_cost / p.sale_value) * 100, { minus: true, sub: `${fmtUSD(p.supplier_price_per_mt)}/MT FOB · from the ${p.supplier_basis}` })}
+        {row("Gross spread", p.gross_spread, p.gross_spread_pct, { strong: true })}
+        {p.costs.map((c) =>
+          row(c.label, c.usd, c.pct_of_sale, {
+            minus: true,
+            tag: PROFIT_STATUS[c.status]?.label,
+            tagColor: PROFIT_STATUS[c.status]?.color,
+            sub: `${fmtUSD(c.per_mt)}/MT`,
+          }),
+        )}
+        {row("PortLess costs", p.costs_total, p.costs_pct, { strong: true, minus: true })}
+        {row("Net profit", p.net_profit, p.net_profit_pct, { strong: true, color: p.net_profit >= 0 ? "#2ec28a" : "#ff5d6c" })}
+      </CardContent>
+    </Card>
+  );
+}
+
 function OverviewTab({ dealId }: { dealId: string }) {
   const { data: deal } = useDeal(dealId);
   const { data: matchScore, isLoading: scoreLoading } = useMatchScore(dealId);
@@ -791,11 +847,15 @@ function OverviewTab({ dealId }: { dealId: string }) {
             label: "Est. Margin",
             value: fmtUSD(deal.est_margin_usd),
             color: "#2ec28a",
+            pct: deal.est_margin_pct,
+            hint: "after freight, inspection, insurance, customs and escrow fee",
           },
           {
             label: "Realized Margin",
             value: fmtUSD(deal.realized_margin_usd),
             color: "#28c2a0",
+            pct: deal.realized_margin_pct,
+            hint: "cash received − supplier paid − PortLess costs",
           },
           {
             label: "Margin Floor",
@@ -831,6 +891,9 @@ function OverviewTab({ dealId }: { dealId: string }) {
             <CardContent>
               <p className="text-xl font-bold" style={{ color: m.color }}>
                 {m.value}
+                {"pct" in m && m.pct != null && (
+                  <span className="ml-1.5 text-sm font-semibold opacity-80">· {fmtPct(m.pct)}</span>
+                )}
               </p>
               {"hint" in m && m.hint && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">{m.hint}</p>
@@ -839,6 +902,8 @@ function OverviewTab({ dealId }: { dealId: string }) {
           </Card>
         ))}
       </div>
+
+      <ProfitBreakdown dealId={dealId} />
 
       {/* Buyer outreach funnel — every identified buyer, contacted in order
           until one says yes; the negotiation waits for that reply. */}
@@ -2268,7 +2333,8 @@ function PaymentsTab({ dealId }: { dealId: string }) {
 
 export function DealDetail() {
   const { dealId } = useParams<{ dealId: string }>();
-  const { data: deal, isLoading, isError, refetch } = useDeal(dealId);
+  const { data: deal, isLoading, isError, error, refetch } = useDeal(dealId);
+  const notFound = (error as { response?: { status?: number } } | null)?.response?.status === 404;
 
   return (
     <div className="space-y-4">
@@ -2302,7 +2368,15 @@ export function DealDetail() {
       </div>
 
       {/* Error */}
-      {isError && (
+      {isError && notFound && (
+        <div className="py-16 text-center space-y-1">
+          <p className="text-sm font-medium">This deal no longer exists</p>
+          <p className="text-xs text-muted-foreground">
+            It may have been cleared. Open a deal from the Deal Board.
+          </p>
+        </div>
+      )}
+      {isError && !notFound && (
         <QueryState isError onRetry={refetch}>
           <></>
         </QueryState>
@@ -2327,6 +2401,7 @@ export function DealDetail() {
             <TabsTrigger value="logistics">Logistics</TabsTrigger>
             <TabsTrigger value="documents">Documents</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
+            <TabsTrigger value="emails">E-mails</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
           </TabsList>
 
@@ -2344,6 +2419,9 @@ export function DealDetail() {
           </TabsContent>
           <TabsContent value="payments">
             <PaymentsTab dealId={dealId} />
+          </TabsContent>
+          <TabsContent value="emails">
+            <NotificationsTab dealId={dealId} />
           </TabsContent>
           <TabsContent value="timeline">
             <TimelineTab dealId={dealId} />
