@@ -47,8 +47,21 @@ const TERMINAL_STATUSES: DealStatus[] = [
 
 const STATUS_ORDER = STAGES.map((s) => s.status);
 
+/** The stage a failed deal failed at, so the pipeline shows how far it got:
+ *  a failed inspection (QC_FAILED, then DISPUTE) fails on the QC step. */
+const FAIL_AT: Partial<Record<DealStatus, DealStatus>> = {
+  QC_FAILED: "QC_PASSED",
+  DISPUTE: "QC_PASSED",
+  NEGOTIATION_FAILED: "NEGOTIATION_AGREED",
+};
+const FAIL_LABEL: Partial<Record<DealStatus, string>> = {
+  QC_FAILED: "QC Failed",
+  DISPUTE: "QC Failed",
+  NEGOTIATION_FAILED: "Not Agreed",
+};
+
 function getStageIndex(status: DealStatus): number {
-  return STATUS_ORDER.indexOf(status);
+  return STATUS_ORDER.indexOf(FAIL_AT[status] ?? status);
 }
 
 interface DealPipelineProps {
@@ -92,9 +105,9 @@ export function DealPipeline({ status, compact = false }: DealPipelineProps) {
     <div className="relative overflow-x-auto scrollbar-thin pb-3">
       <div className="flex items-start gap-0 min-w-max px-2">
         {STAGES.map((stage, idx) => {
-          const isDone = !isTerminal && currentIdx > idx;
+          const isDone = currentIdx > idx;
           const isCurrent = !isTerminal && currentIdx === idx;
-          const isFuture = !isTerminal && currentIdx < idx;
+          const isFuture = currentIdx < idx;
           const isFailPoint = isTerminal && currentIdx === idx;
           const Icon = stage.icon;
 
@@ -150,7 +163,7 @@ export function DealPipeline({ status, compact = false }: DealPipelineProps) {
                   className="text-[10px] text-center max-w-[64px] leading-tight font-medium whitespace-nowrap"
                   style={{ color: labelColor, fontWeight: isCurrent ? 600 : undefined }}
                 >
-                  {stage.label}
+                  {isFailPoint ? FAIL_LABEL[status] ?? stage.label : stage.label}
                 </span>
               </div>
 
@@ -160,7 +173,7 @@ export function DealPipeline({ status, compact = false }: DealPipelineProps) {
                   className="w-10 h-0.5 mx-0.5 mt-[-18px] transition-all duration-300"
                   style={{
                     background:
-                      idx < currentIdx && !isTerminal
+                      idx < currentIdx
                         ? "var(--connector-done)"
                         : "var(--connector-future)",
                   }}

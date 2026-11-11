@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { EscrowStatusChip } from "@/components/EscrowStatusChip";
+import { FreightStatusChip } from "@/components/FreightStatusChip";
+import { showsEscrow } from "@/lib/escrow";
 import { ExtendPiButton } from "@/components/deal/ExtendPiButton";
 import {
   ArrowLeft,
@@ -68,6 +71,8 @@ import { JournalCard } from "@/components/deal/JournalCard";
 import { EvidencePackButtons } from "@/components/deal/EvidencePackButtons";
 import { FreightMilestoneControls } from "@/components/deal/FreightMilestoneControls";
 import { CompliancePanel } from "@/components/deal/CompliancePanel";
+import { ShipmentTrackingCard } from "@/components/deal/ShipmentTrackingCard";
+import { InspectionPlanCard } from "@/components/deal/InspectionPlanCard";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1828,6 +1833,7 @@ function EscrowActionDialog({
 
 function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }) {
   const [dialog, setDialog] = useState<EscrowDialogSpec | null>(null);
+  const poll = useEscrowAction(dealId);
 
   const status = escrow.status;
   const funded = status === "FUNDED" || status === "RELEASED";
@@ -1954,7 +1960,41 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
             </span>
           )}
           <span className="text-muted-foreground">opened {timeAgo(escrow.created_at)}</span>
+          {(escrow.provider === "tazapay" || escrow.provider === "escrow_com") && (
+            <>
+              <span className="text-muted-foreground" data-testid="escrow-provider-status">
+                {providerLabel(escrow.provider)} says{" "}
+                <span className="font-mono">{escrow.provider_status ?? "—"}</span>
+                {escrow.provider_checked_at && ` · read ${timeAgo(escrow.provider_checked_at)}`}
+              </span>
+              <button
+                type="button"
+                className="text-[#4f8cff] hover:underline disabled:opacity-50"
+                disabled={poll.isPending}
+                onClick={() =>
+                  poll.mutate(
+                    { kind: "poll", escrowId: escrow.escrow_id },
+                    {
+                      onSuccess: () => toast.success(`Read ${providerLabel(escrow.provider)}`),
+                      onError: (e) => toast.error(e instanceof Error ? e.message : "Provider read failed"),
+                    }
+                  )
+                }
+                data-testid="escrow-poll"
+              >
+                {poll.isPending ? "Reading…" : `Check ${providerLabel(escrow.provider)} now`}
+              </button>
+            </>
+          )}
         </div>
+        {(escrow.submitted_total ?? 0) > 0 && (
+          <p className="text-[11px] text-[#f5a623]" data-testid="escrow-submitted">
+            {fmtUSD(escrow.submitted_total ?? 0)} is with {providerLabel(escrow.provider)} for payout —{" "}
+            {escrow.provider === "escrow_com"
+              ? "the buyer accepts each stage on Escrow.com (or its inspection period lapses)."
+              : "Tazapay pays it out after checking the documents."}
+          </p>
+        )}
 
         {/* Tranche schedule */}
         {escrow.tranches.length > 0 ? (
@@ -1982,10 +2022,17 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
                     </td>
                     <td className="py-2 px-3">
                       <Badge
-                        variant={t.status === "RELEASED" ? "success" : "secondary"}
+                        variant={t.status === "RELEASED" ? "success" : t.status === "SUBMITTED" ? "warning" : "secondary"}
                         className="text-[9px] h-4 px-1.5"
+                        title={
+                          t.status === "SUBMITTED"
+                            ? `Proof sent to ${providerLabel(escrow.provider)}${t.submitted_at ? ` ${timeAgo(t.submitted_at)}` : ""} — waiting for its payout`
+                            : t.release_source
+                            ? `confirmed by ${t.release_source}`
+                            : undefined
+                        }
                       >
-                        {t.status}
+                        {t.status === "SUBMITTED" ? `with ${providerLabel(escrow.provider)}` : t.status}
                       </Badge>
                     </td>
                     <td className="py-2 px-3 font-mono text-[10px] text-muted-foreground max-w-[220px] truncate">
@@ -2361,6 +2408,8 @@ export function DealDetail() {
                 HS {deal.hs_code}
               </span>
               <StatusBadge status={deal.status} />
+              {showsEscrow(deal) && <EscrowStatusChip deal={deal} />}
+              <FreightStatusChip deal={deal} />
             </div>
           ) : null}
         </div>
@@ -2412,7 +2461,11 @@ export function DealDetail() {
             <NegotiationTab dealId={dealId} />
           </TabsContent>
           <TabsContent value="logistics">
-            <LogisticsTab dealId={dealId} />
+            <div className="space-y-4">
+              {deal && <InspectionPlanCard deal={deal} />}
+              <ShipmentTrackingCard dealId={dealId} />
+              <LogisticsTab dealId={dealId} />
+            </div>
           </TabsContent>
           <TabsContent value="documents">
             <DocumentsTab dealId={dealId} />

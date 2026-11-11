@@ -12,6 +12,7 @@ import {
   Factory,
   Users,
   Percent,
+  Handshake,
 } from "lucide-react";
 import { cn, fmtUSD } from "@/lib/utils";
 import {
@@ -20,7 +21,7 @@ import {
   useCreateDeal,
   useTradeSources,
 } from "@/api/hooks";
-import type { Opportunity, SellerCandidate, TradeSource } from "@/api/types";
+import type { Opportunity, PairMatch, SellerCandidate, TradeSource } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -171,6 +172,8 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
         </div>
       )}
 
+      <PairMatches pairs={opp.pair_matches ?? []} />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Sellers */}
         <div>
@@ -293,6 +296,116 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Buyer × seller pair matching ────────────────────────────────────────────
+
+const GRADE_STYLE: Record<string, string> = {
+  Perfect: "bg-[#2ec28a]/15 text-[#2ec28a] border-[#2ec28a]/30",
+  Strong: "bg-[#28c2a0]/15 text-[#28c2a0] border-[#28c2a0]/30",
+  Good: "bg-[#4f8cff]/15 text-[#4f8cff] border-[#4f8cff]/30",
+  Fair: "bg-[#f5a623]/15 text-[#f5a623] border-[#f5a623]/30",
+  Weak: "bg-[#ff5d6c]/10 text-[#ff5d6c] border-[#ff5d6c]/25",
+  Blocked: "bg-muted text-muted-foreground border-border",
+};
+
+function scoreColor(v: number | null): string {
+  if (v == null) return "bg-muted";
+  return v >= 75 ? "bg-[#2ec28a]" : v >= 50 ? "bg-[#f5a623]" : "bg-[#ff5d6c]";
+}
+
+function PairRow({ p }: { p: PairMatch }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg bg-popover border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-3 px-3 py-2 text-left"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
+        <span className="text-sm font-bold w-9 text-right tabular-nums">{p.score.toFixed(0)}</span>
+        <span className={cn("text-[10px] px-1.5 py-0.5 rounded border shrink-0", GRADE_STYLE[p.grade])}>{p.grade}</span>
+        <span className="text-xs min-w-0 flex-1 truncate">
+          <span className="font-medium">{p.buyer_name}</span>
+          <span className="text-muted-foreground"> ({p.buyer_country}) ⇄ </span>
+          <span className="font-medium">{p.seller_name}</span>
+        </span>
+        {p.recommended && (
+          <Badge variant="success" className="text-[9px] h-4 px-1.5 shrink-0">Recommended</Badge>
+        )}
+        {p.margin_pct != null && (
+          <span className="text-[11px] text-muted-foreground shrink-0 hidden sm:inline" title="Margin after landed cost">
+            {p.margin_pct.toFixed(1)}% margin
+          </span>
+        )}
+        <span className="text-[10px] text-muted-foreground shrink-0 hidden md:inline" title="Share of the score backed by real data">
+          {(p.confidence * 100).toFixed(0)}% data
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2 border-t border-border pt-2">
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
+            <span>Buyer's view: <span className="text-foreground font-medium">{p.buyer_view.toFixed(0)}</span></span>
+            <span>Seller's view: <span className="text-foreground font-medium">{p.seller_view.toFixed(0)}</span></span>
+            {p.buyer_price_usd_per_mt != null && (
+              <span>Buyer price: <span className="text-foreground font-medium">${p.buyer_price_usd_per_mt.toFixed(0)}/MT</span>
+                {p.buyer_price_basis === "market_benchmark" && " (market benchmark)"}</span>
+            )}
+            {p.landed_cost_usd_per_mt != null && (
+              <span>Landed cost: <span className="text-foreground font-medium">${p.landed_cost_usd_per_mt.toFixed(0)}/MT</span></span>
+            )}
+          </div>
+          {p.blockers.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {p.blockers.map((b) => (
+                <span key={b} className="text-[10px] px-1.5 py-0.5 rounded bg-[#ff5d6c]/10 text-[#ff5d6c] border border-[#ff5d6c]/25">{b}</span>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
+            {p.factors.map((f) => (
+              <div key={f.key} className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] w-40 shrink-0 truncate">{f.label}</span>
+                  <Progress value={f.score ?? 0} className="h-1.5 flex-1" indicatorClassName={scoreColor(f.score)} />
+                  <span className="text-[11px] w-8 text-right tabular-nums">{f.score == null ? "?" : f.score.toFixed(0)}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground truncate" title={f.reason}>{f.reason}</p>
+              </div>
+            ))}
+          </div>
+          {p.improve.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold mb-0.5">To raise this score</p>
+              <ul className="list-disc pl-4 text-[11px] text-muted-foreground space-y-0.5">
+                {p.improve.map((x) => <li key={x}>{x}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PairMatches({ pairs }: { pairs: PairMatch[] }) {
+  if (pairs.length === 0) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Handshake className="w-3.5 h-3.5 text-[#2ec28a]" />
+        <span className="text-xs font-semibold">Best Buyer ⇄ Seller Matches</span>
+        <span className="text-[10px] text-muted-foreground">
+          scored on 10 factors from both sides · open a row for the breakdown
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {pairs.map((p) => <PairRow key={`${p.buyer_index}-${p.seller_id}`} p={p} />)}
       </div>
     </div>
   );
@@ -533,6 +646,9 @@ export function OpportunityRadar() {
                     Arbitrage Score
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Best Match
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Top Seller
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -591,6 +707,20 @@ export function OpportunityRadar() {
                         <ArbitrageBar rank={opp.arbitrage_rank} />
                       </td>
                       <td className="px-4 py-3">
+                        {(() => {
+                          const best = (opp.pair_matches ?? [])[0];
+                          if (!best) return <span className="text-xs text-muted-foreground">—</span>;
+                          return (
+                            <div className="text-xs" title={`${best.buyer_name} ⇄ ${best.seller_name}`}>
+                              <span className="font-bold tabular-nums mr-1.5">{best.score.toFixed(0)}</span>
+                              <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", GRADE_STYLE[best.grade])}>
+                                {best.grade}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
                         {topSeller ? (
                           <div className="text-xs">
                             <p className="font-medium truncate max-w-[160px]">{topSeller.company_name}</p>
@@ -640,7 +770,7 @@ export function OpportunityRadar() {
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-border">
-                        <td colSpan={8} className="p-0">
+                        <td colSpan={9} className="p-0">
                           <OpportunityDetail opp={opp} />
                         </td>
                       </tr>

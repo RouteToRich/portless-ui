@@ -31,6 +31,8 @@ import type {
   RecordMilestoneRequest,
   RfqRecord,
   TrackingPollResult,
+  ShipmentView,
+  InspectionType,
   DealmakerDealDocuments,
   DocumentRecord,
   DownstreamHealth,
@@ -422,6 +424,10 @@ function normalizeEscrow(raw: Partial<EscrowRecord> & { escrow_id: string; deal_
     buyer_accepted_at: raw.buyer_accepted_at ?? null,
     disputed: raw.disputed ?? false,
     disputed_at: raw.disputed_at ?? null,
+    provider_display: raw.provider_display ?? null,
+    provider_status: raw.provider_status ?? null,
+    provider_checked_at: raw.provider_checked_at ?? null,
+    submitted_total: raw.submitted_total ?? 0,
   };
 }
 
@@ -461,6 +467,11 @@ export const EscrowApi = {
   openWindow: (escrowId: string, payload: { reason: string }) =>
     api
       .post<EscrowRecord>(`/escrow-guard/escrows/${escrowId}/open-window`, payload)
+      .then((r) => normalizeEscrow(r.data)),
+  // Read the escrow on Tazapay / Escrow.com now: buyer payment, stages paid out.
+  pollProvider: (escrowId: string) =>
+    api
+      .post<EscrowRecord>(`/escrow-guard/escrows/${escrowId}/poll`, {})
       .then((r) => normalizeEscrow(r.data)),
   // Lift a buyer dispute (re-inspection agreed / resolved in PortLess's favour).
   clearDispute: (escrowId: string, payload: { reason: string }) =>
@@ -571,9 +582,15 @@ export const ShieldApi = {
         { source: "operator", ...payload }
       )
       .then((r) => r.data),
-  // Poll the carrier-tracking actor for the deal's container now.
+  // Read the deal's shipment now: Maersk booking + Track & Trace + B/L (or the tracking actor).
   pollTracking: (dealId: string) =>
     api.post<TrackingPollResult>(`/shield-link/deals/${dealId}/track`).then((r) => r.data),
+  // Booking, containers, B/L / VGM state and the container event timeline.
+  getShipment: (dealId: string) =>
+    api.get<ShipmentView>(`/shield-link/deals/${dealId}/shipment`).then((r) => r.data),
+  // Staff record the buyer's inspection requirement (DUPRO / PSI / PEO).
+  setInspectionPlan: (dealId: string, types: InspectionType[], reason = "") =>
+    api.put<Deal>(`/deals/${dealId}/inspection-plan`, { types, reason }).then((r) => r.data),
 };
 
 interface RawDocugenDoc {

@@ -2,12 +2,17 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { cn, fmtUSD, fmtPct, timeAgo } from "@/lib/utils";
-import type { Deal, DealStatus } from "@/api/types";
+import type { Deal, DealStatus, QcStatus } from "@/api/types";
 import { useDeals } from "@/api/hooks";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QueryState } from "@/components/QueryState";
 import { DealPipeline } from "@/components/DealPipeline";
 import { isProspect } from "@/lib/prospect";
+import { QC_STAGE_STATUSES, QC_STATUS_META, QC_STATUS_ORDER, TONE_CLASS, qcStatusOf } from "@/lib/qc";
+import { QcStatusChip } from "@/components/QcStatusChip";
+import { EscrowStatusChip } from "@/components/EscrowStatusChip";
+import { FreightStatusChip } from "@/components/FreightStatusChip";
+import { showsEscrow } from "@/lib/escrow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -35,16 +40,25 @@ const COLUMNS = [
     statuses: ["ESCROW_PENDING", "ESCROW_FUNDED"] as DealStatus[],
   },
   {
-    id: "fulfillment",
-    label: "Fulfillment",
+    // The whole inspection stage, PO to report — each card shows its QC status
+    // (awaiting date, scheduled, inspected, failed …). A failed inspection
+    // (QC_FAILED → DISPUTE) stays here: it is an open problem, not a finished deal.
+    id: "qc",
+    label: "QC",
     color: "#a78bfa",
-    statuses: ["PO_ISSUED", "SUPPLIER_DISPATCH_READY", "QC_PASSED", "QC_FAILED", "IN_TRANSIT"] as DealStatus[],
+    statuses: QC_STAGE_STATUSES,
+  },
+  {
+    id: "transit",
+    label: "In Transit",
+    color: "#6cb4ff",
+    statuses: ["IN_TRANSIT"] as DealStatus[],
   },
   {
     id: "complete",
     label: "Complete",
     color: "#2ec28a",
-    statuses: ["CLEARED", "PAID", "DISPUTE", "CANCELLED", "REFUNDED", "NEGOTIATION_FAILED"] as DealStatus[],
+    statuses: ["CLEARED", "PAID", "CANCELLED", "REFUNDED", "NEGOTIATION_FAILED"] as DealStatus[],
   },
 ] as const;
 
@@ -92,11 +106,16 @@ function DealCard({ deal, onClick }: DealCardProps) {
   const buyer = deal.parties.find((p) => p.role === "buyer");
   const supplier = deal.parties.find((p) => p.role === "supplier");
   const sourcedCount = (deal.match_results ?? []).filter((m) => m.decision === "SOURCE").length;
+  const qc = qcStatusOf(deal);
+  const qcDanger = qc != null && QC_STATUS_META[qc].tone === "danger";
 
   return (
     <div
       onClick={onClick}
-      className="group bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/50 hover:bg-secondary/50 transition-all duration-150 space-y-2.5"
+      className={cn(
+        "group bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/50 hover:bg-secondary/50 transition-all duration-150 space-y-2.5",
+        qcDanger && "border-l-4 border-l-[#ff5d6c]"
+      )}
     >
       {/* HS Code + route */}
       <div className="flex items-start justify-between gap-2">
@@ -113,6 +132,33 @@ function DealCard({ deal, onClick }: DealCardProps) {
 
       {/* Pipeline mini */}
       <DealPipeline status={deal.status} compact />
+
+      {showsEscrow(deal) && (
+        <div className="space-y-1" data-testid="escrow-status-box">
+          <EscrowStatusChip deal={deal} />
+          {deal.escrow_status_detail && (
+            <p className="text-[10px] text-muted-foreground leading-snug">{deal.escrow_status_detail}</p>
+          )}
+        </div>
+      )}
+
+      {deal.freight_status && (
+        <div className="space-y-1" data-testid="freight-status-box">
+          <FreightStatusChip deal={deal} className="max-w-full" />
+          {deal.freight_status_detail && (
+            <p className="text-[10px] text-muted-foreground leading-snug break-words">{deal.freight_status_detail}</p>
+          )}
+        </div>
+      )}
+
+      {qc && (
+        <div className="space-y-1" data-testid="qc-status-box">
+          <QcStatusChip status={qc} />
+          {deal.qc_status_detail && (
+            <p className="text-[10px] text-muted-foreground leading-snug">{deal.qc_status_detail}</p>
+          )}
+        </div>
+      )}
 
       {/* Metrics */}
       <div className="flex items-center justify-between text-xs">
@@ -168,6 +214,11 @@ export function DealBoard() {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
 
   const realDeals = (deals ?? []).filter((d) => !isProspect(d));
+  const qcAttention = realDeals.filter((d) => {
+    const s = qcStatusOf(d);
+    return s != null && QC_STATUS_META[s].tone === "danger";
+  }).length;
+  const [qcFilter, setQcFilter] = useState<QcStatus | null>(null);
   const prospectCount = (deals?.length ?? 0) - realDeals.length;
   const filtered = realDeals.filter((d) => {
     if (!search) return true;
@@ -191,6 +242,14 @@ export function DealBoard() {
           <h1 className="text-lg font-bold">Deal Board</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {realDeals.length} deal{realDeals.length === 1 ? "" : "s"} — a buyer said yes and a supplier is chosen
+            {qcAttention > 0 && (
+              <>
+                {" · "}
+                <span className="text-[#ff5d6c] font-semibold" data-testid="qc-attention-count">
+                  {qcAttention} inspection{qcAttention === 1 ? "" : "s"} need{qcAttention === 1 ? "s" : ""} attention
+                </span>
+              </>
+            )}
             {prospectCount > 0 && (
               <>
                 {" · "}
@@ -248,11 +307,11 @@ export function DealBoard() {
       {/* Content */}
       {isLoading ? (
         viewMode === "kanban" ? (
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 pb-2">
             {COLUMNS.map((col) => (
               <div
                 key={col.id}
-                className="min-w-[240px] flex-shrink-0 bg-popover border border-border rounded-xl p-3 space-y-2"
+                className="min-w-0 bg-popover border border-border rounded-xl p-3 space-y-2"
               >
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -276,15 +335,32 @@ export function DealBoard() {
           <></>
         </QueryState>
       ) : viewMode === "kanban" ? (
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin flex-1">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 pb-2 flex-1 items-start">
           {COLUMNS.map((col) => {
-            const colDeals = filtered.filter((d) =>
+            const inCol = filtered.filter((d) =>
               (col.statuses as readonly string[]).includes(d.status)
             );
+            const isQc = col.id === "qc";
+            const qcCounts = new Map<QcStatus, number>();
+            if (isQc) {
+              for (const d of inCol) {
+                const s = qcStatusOf(d);
+                if (s) qcCounts.set(s, (qcCounts.get(s) ?? 0) + 1);
+              }
+            }
+            const colDeals = isQc
+              ? inCol
+                  .filter((d) => !qcFilter || qcStatusOf(d) === qcFilter)
+                  .sort((a, b) => {
+                    const ra = QC_STATUS_META[qcStatusOf(a) ?? "PASSED"].rank;
+                    const rb = QC_STATUS_META[qcStatusOf(b) ?? "PASSED"].rank;
+                    return ra - rb;
+                  })
+              : inCol;
             return (
               <div
                 key={col.id}
-                className="min-w-[240px] w-[240px] flex-shrink-0 bg-popover border border-border rounded-xl flex flex-col"
+                className="min-w-0 bg-popover border border-border rounded-xl flex flex-col"
               >
                 {/* Column header */}
                 <div className="flex items-center justify-between px-3 py-3 border-b border-border">
@@ -298,9 +374,29 @@ export function DealBoard() {
                     </span>
                   </div>
                   <Badge variant="secondary" className="text-[10px] h-5">
-                    {colDeals.length}
+                    {inCol.length}
                   </Badge>
                 </div>
+
+                {/* QC status breakdown — click to filter the column */}
+                {isQc && qcCounts.size > 0 && (
+                  <div className="flex flex-wrap gap-1 px-2 pt-2" data-testid="qc-status-filters">
+                    {QC_STATUS_ORDER.filter((s) => qcCounts.has(s)).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setQcFilter(qcFilter === s ? null : s)}
+                        className={cn(
+                          "rounded-full border px-1.5 py-0.5 text-[9px] font-semibold transition-opacity",
+                          TONE_CLASS[QC_STATUS_META[s].tone],
+                          qcFilter && qcFilter !== s && "opacity-40"
+                        )}
+                        title={qcFilter === s ? "Show every QC status" : `Show only: ${QC_STATUS_META[s].label}`}
+                      >
+                        {QC_STATUS_META[s].label} {qcCounts.get(s)}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Cards */}
                 <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin">
@@ -323,38 +419,40 @@ export function DealBoard() {
           })}
         </div>
       ) : (
-        /* List view */
+        /* List view — fits the page: fixed column widths, long text truncates,
+           secondary columns appear only on wide screens (no horizontal scroll). */
         <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full">
+          <table className="w-full table-fixed" data-testid="deal-table">
             <thead>
               <tr className="border-b border-border bg-popover">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  HS Code
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Parties
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Pipeline
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Match (CMS)
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Est. Margin
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Created
-                </th>
+                {[
+                  ["HS Code", "text-left w-[96px]"],
+                  ["Parties", "text-left"],
+                  ["Status", "text-left w-[130px]"],
+                  ["Escrow", "text-left w-[170px]"],
+                  ["Freight", "text-left w-[150px]"],
+                  ["QC", "text-left w-[140px]"],
+                  ["Pipeline", "text-left w-[130px] hidden xl:table-cell"],
+                  ["Match", "text-right w-[96px] hidden 2xl:table-cell"],
+                  ["Est. Margin", "text-right w-[110px]"],
+                  ["Created", "text-right w-[80px] hidden lg:table-cell"],
+                ].map(([label, cls]) => (
+                  <th
+                    key={label}
+                    className={cn(
+                      "px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate",
+                      cls
+                    )}
+                  >
+                    {label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-sm text-muted-foreground">
+                  <td colSpan={10} className="text-center py-12 text-sm text-muted-foreground">
                     No deals match your search
                   </td>
                 </tr>
@@ -362,51 +460,68 @@ export function DealBoard() {
                 filtered.map((deal, idx) => {
                   const buyer = deal.parties.find((p) => p.role === "buyer");
                   const supplier = deal.parties.find((p) => p.role === "supplier");
+                  const qc = qcStatusOf(deal);
                   return (
                     <tr
                       key={deal.deal_id}
                       onClick={() => navigate(`/deals/${deal.deal_id}`)}
                       className={cn(
-                        "border-b border-border cursor-pointer hover:bg-card transition-colors",
-                        idx % 2 === 0 ? "bg-transparent" : "bg-secondary/30"
+                        "border-b border-border cursor-pointer hover:bg-card transition-colors align-top",
+                        idx % 2 === 0 ? "bg-transparent" : "bg-secondary/30",
+                        qc != null && QC_STATUS_META[qc].tone === "danger" &&
+                          "bg-[rgba(255,93,108,0.06)] shadow-[inset_3px_0_0_#ff5d6c]"
                       )}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <span className="font-mono text-sm font-bold">{deal.hs_code}</span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-xs">
-                          {buyer && (
-                            <span className="text-muted-foreground">{buyer.legal_name}</span>
-                          )}
-                          {buyer && supplier && (
-                            <span className="text-border mx-1">↔</span>
-                          )}
-                          {supplier && (
-                            <span className="text-muted-foreground">{supplier.legal_name}</span>
-                          )}
+                      <td className="px-3 py-3 min-w-0">
+                        <div
+                          className="text-xs text-muted-foreground truncate"
+                          title={[buyer?.legal_name, supplier?.legal_name].filter(Boolean).join(" ↔ ")}
+                        >
+                          {buyer?.legal_name}
+                          {buyer && supplier && <span className="text-border mx-1">↔</span>}
+                          {supplier?.legal_name}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 min-w-0">
                         <StatusBadge status={deal.status} />
                       </td>
-                      <td className="px-4 py-3 w-36">
+                      <td className="px-3 py-3 min-w-0">
+                        {showsEscrow(deal) ? (
+                          <EscrowStatusChip deal={deal} className="max-w-full" />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 min-w-0">
+                        {deal.freight_status ? (
+                          <FreightStatusChip deal={deal} className="max-w-full" />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 min-w-0" title={deal.qc_status_detail ?? undefined}>
+                        {qc ? <QcStatusChip status={qc} className="max-w-full" /> : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-3 py-3 hidden xl:table-cell">
                         <DealPipeline status={deal.status} compact />
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3 py-3 text-right hidden 2xl:table-cell">
                         {deal.winning_cms != null ? (
                           <CmsChip score={deal.winning_cms} />
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">
+                      <td className="px-3 py-3 text-right text-sm font-medium truncate">
                         {fmtUSD(deal.est_margin_usd)}
                         {deal.est_margin_pct != null && (
                           <span className="ml-1 text-xs text-muted-foreground">{fmtPct(deal.est_margin_pct)}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                      <td className="px-3 py-3 text-right text-xs text-muted-foreground hidden lg:table-cell">
                         {timeAgo(deal.created_at)}
                       </td>
                     </tr>

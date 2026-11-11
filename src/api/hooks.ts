@@ -507,6 +507,39 @@ export function useRunNegotiationRound(negotiationId: string) {
 
 // ── Escrow ────────────────────────────────────────────────────────────────────
 
+export function useShipment(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ["shipment", dealId],
+    queryFn: () => ShieldApi.getShipment(dealId as string),
+    enabled: Boolean(dealId),
+    refetchInterval: 30000,
+  });
+}
+
+export function useTrackShipment(dealId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => ShieldApi.pollTracking(dealId as string),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shipment", dealId] });
+      qc.invalidateQueries({ queryKey: ["deal", dealId] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
+      qc.invalidateQueries({ queryKey: ["approvals"] });
+    },
+  });
+}
+
+export function useSetInspectionPlan(dealId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (types: import("./types").InspectionType[]) => ShieldApi.setInspectionPlan(dealId as string, types),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal", dealId] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
+    },
+  });
+}
+
 export function useEscrowHold(dealId: string | undefined) {
   return useQuery({
     queryKey: ["escrow-hold", dealId],
@@ -556,7 +589,7 @@ export function useSetKillSwitch() {
   });
 }
 
-export type EscrowActionKind = "accept" | "dispute" | "refund" | "open_window" | "clear_dispute";
+export type EscrowActionKind = "accept" | "dispute" | "refund" | "open_window" | "clear_dispute" | "poll";
 
 // Operator actions on an escrow (buyer acceptance relay, dispute, refund) —
 // every one of them moves money, so the pages confirm before calling this.
@@ -582,6 +615,9 @@ export function useEscrowAction(dealId: string | undefined) {
       }
       if (kind === "open_window") {
         return EscrowApi.openWindow(escrowId, { reason: reason || "operator confirmed delivery" });
+      }
+      if (kind === "poll") {
+        return EscrowApi.pollProvider(escrowId);
       }
       if (kind === "clear_dispute") {
         return EscrowApi.clearDispute(escrowId, { reason: reason || "resolved" });

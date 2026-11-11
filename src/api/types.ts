@@ -359,9 +359,144 @@ export interface Deal {
   quantity_mt?: number | null;
   /** Buyer outreach funnel — every identified buyer, in contact order. */
   buyer_candidates?: BuyerCandidate[];
+  /** Where the pre-shipment inspection stands — kept by the backend
+   *  (shared/orchestration/qc_status.py); null before the PO. */
+  qc_status?: QcStatus | null;
+  qc_status_detail?: string | null;
+  qc_status_at?: string | null;
+  /** Escrow provider holding (or chosen to hold) the buyer's money —
+   *  shared/orchestration/escrow_status.py. */
+  escrow_provider?: EscrowProvider | null;
+  /** Who chose it: buyer (their e-mail) / operator / pi / default. */
+  escrow_provider_source?: string | null;
+  escrow_status?: DealEscrowStatus | null;
+  escrow_status_detail?: string | null;
+  escrow_status_at?: string | null;
+  /** QC phases the buyer asked for (DUPRO / PSI / PEO) and where each stands. */
+  inspection_types?: InspectionType[];
+  inspection_types_source?: string | null;
+  inspections?: InspectionPhase[];
+  /** Where the shipment stands with the carrier — shared/orchestration/freight_status.py. */
+  freight_status?: FreightStatus | null;
+  freight_status_detail?: string | null;
+  freight_status_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
+
+export type EscrowProvider = "tazapay" | "escrow_com";
+
+export type InspectionType = "DUPRO" | "PSI" | "PEO";
+
+export interface InspectionPhase {
+  type: InspectionType;
+  label: string;
+  status: "PLANNED" | "BOOKED" | "SCHEDULED" | "INSPECTED" | "DECISION_NEEDED" | "PASSED" | "FAILED" | "BOOKING_FAILED";
+  provider?: string | null;
+  inspection_date?: string | null;
+  result?: string | null;
+  order_number?: string | null;
+  tpo_id?: string | null;
+}
+
+// shared/domain/enums.py::FreightStatus
+export type FreightStatus =
+  | "NOT_BOOKED"
+  | "BOOKING_FAILED"
+  | "BOOKING_REQUESTED"
+  | "BOOKING_REJECTED"
+  | "BOOKING_CONFIRMED"
+  | "DOCS_PENDING"
+  | "BL_ISSUED"
+  | "LOADED"
+  | "DEPARTED"
+  | "ARRIVED"
+  | "DISCHARGED"
+  | "DELIVERED";
+
+// GET /shield-link/deals/{id}/shipment — services/shield_link/freight.py::shipment_view
+export interface ShipmentEvent {
+  event_id?: string | null;
+  event_type?: string | null;
+  code: string;
+  classifier: string;
+  at?: string | null;
+  location?: { name?: string | null; unlocode?: string | null; country?: string | null };
+  vessel?: string | null;
+  voyage?: string | null;
+  equipment_reference?: string | null;
+  milestone?: string | null;
+}
+
+export interface ShipmentContainer {
+  equipment_reference: string;
+  iso_code?: string | null;
+  tare_kg?: number | null;
+  seal?: string | null;
+  last_event?: string | null;
+  last_event_at?: string | null;
+  location?: string | null;
+}
+
+export interface ShipmentView {
+  deal_id: string;
+  freight_status?: FreightStatus | null;
+  freight_status_detail?: string | null;
+  booking: null | {
+    tpo_id: string;
+    provider: string;
+    carrier?: string | null;
+    booking_reference?: string | null;
+    booking_status?: string | null;
+    status: string;
+    origin_port?: string | null;
+    destination_port?: string | null;
+    vessel?: string | null;
+    voyage?: string | null;
+    etd?: string | null;
+    eta?: string | null;
+    transport_document_reference?: string | null;
+    ebl_status?: string | null;
+    ebl_issued_at?: string | null;
+    vgm_status?: string | null;
+    vgm_submitted_at?: string | null;
+    last_milestone?: string | null;
+    last_milestone_at?: string | null;
+    delivered_at?: string | null;
+    last_polled_at?: string | null;
+    note?: string | null;
+  };
+  containers?: ShipmentContainer[];
+  events?: ShipmentEvent[];
+}
+
+// shared/domain/enums.py::EscrowStatus (the deal's escrow status line)
+export type DealEscrowStatus =
+  | "OPEN_FAILED"
+  | "AWAITING_FUNDING"
+  | "PARTIALLY_FUNDED"
+  | "FUNDED"
+  | "WITH_PROVIDER"
+  | "RELEASING"
+  | "ACCEPTANCE_WINDOW"
+  | "DISPUTED"
+  | "SETTLED"
+  | "REFUNDED";
+
+// shared/domain/enums.py::QcStatus
+export type QcStatus =
+  | "AWAITING_PO_ACK"
+  | "AWAITING_READY_DATE"
+  | "NOT_BOOKED"
+  | "BOOKING_FAILED"
+  | "REQUESTED"
+  | "SCHEDULED"
+  | "INSPECTED"
+  | "OVERDUE"
+  | "RESULT_PENDING"
+  | "REINSPECTION"
+  | "PASSED"
+  | "FAILED";
 
 // GET /deals/{id}/timeline — shared/orchestration/evidence.py::build_timeline
 export type TimelineKind =
@@ -415,6 +550,37 @@ export interface SellerCandidate {
   price_unit?: string | null;
 }
 
+export interface MatchFactor {
+  key: string;
+  label: string;
+  score: number | null;
+  reason: string;
+}
+
+export type MatchGrade = "Perfect" | "Strong" | "Good" | "Fair" | "Weak" | "Blocked";
+
+export interface PairMatch {
+  buyer_index: number;
+  buyer_name: string;
+  buyer_country: string;
+  seller_id: string;
+  seller_name: string;
+  score: number;
+  grade: MatchGrade;
+  confidence: number;
+  buyer_view: number;
+  seller_view: number;
+  margin_pct?: number | null;
+  margin_usd_per_mt?: number | null;
+  buyer_price_usd_per_mt?: number | null;
+  buyer_price_basis?: string | null;
+  landed_cost_usd_per_mt?: number | null;
+  factors: MatchFactor[];
+  blockers: string[];
+  improve: string[];
+  recommended: boolean;
+}
+
 export interface BuyerSignal {
   buyer_name: string;
   buyer_country: string;
@@ -460,6 +626,9 @@ export interface Opportunity {
   status?: "ACTIVE" | "MARGINAL" | "EXPIRED" | "CONVERTED" | null;
   seller_candidates?: SellerCandidate[];
   buyer_signals?: BuyerSignal[];
+  // Buyer × seller pair matching (backend services/trade_min/pair_match.py)
+  pair_matches?: PairMatch[];
+  best_match_score?: number | null;
   // Enrichment fields returned by GET /trade-min/opportunities (EnrichedOpportunity)
   currency?: string | null;
   scanned_at?: string | null;
@@ -897,10 +1066,18 @@ export interface Tranche {
   trigger: TrancheTrigger | string;
   pct: number;
   amount?: number | null;
-  status: "PENDING" | "RELEASED";
+  /** SUBMITTED — the proof is with the escrow provider; the money stays in
+   *  escrow until the provider pays it out (Tazapay verification / the buyer
+   *  accepting the Escrow.com milestone). */
+  status: "PENDING" | "SUBMITTED" | "RELEASED";
   proof_refs: string[];
   ext_ref?: string | null;
   released_at?: string | null;
+  submitted_at?: string | null;
+  provider_item_id?: string | null;
+  provider_documents?: string[];
+  /** What confirmed the payout: provider / webhook / poll / staff. */
+  release_source?: string | null;
 }
 
 // GET /escrow-guard/deals/{id}/hold — EscrowResponse
@@ -934,6 +1111,12 @@ export interface EscrowRecord {
   buyer_accepted_at?: string | null;
   disputed: boolean;
   disputed_at?: string | null;
+  provider_display?: string | null;
+  /** The provider's own status word at the last read. */
+  provider_status?: string | null;
+  provider_checked_at?: string | null;
+  /** Proof sent to the provider, payout not confirmed yet. */
+  submitted_total?: number;
 }
 
 // GET /escrow-guard/deals/{id}/journal — services/escrow_guard/journal.py

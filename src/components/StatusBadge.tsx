@@ -6,6 +6,8 @@ const OK: DealStatus[] = ["PAID", "CLEARED", "QC_PASSED", "ESCROW_FUNDED", "NEGO
 const WARN: DealStatus[] = ["ESCROW_PENDING", "PI_SENT", "MATCHING", "NEGOTIATING", "SUPPLIER_DISPATCH_READY", "IN_TRANSIT"];
 
 function statusLabel(status: DealStatus): string {
+  // DISPUTE is only ever reached from QC_FAILED — say why the deal is stuck.
+  if (status === "DISPUTE") return "QC FAILED · DISPUTE";
   return status.replace(/_/g, " ");
 }
 
