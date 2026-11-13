@@ -567,6 +567,10 @@ export interface SellerCandidate {
   fit_score?: number | null;
   price_unit?: string | null;
   validation?: CounterpartyValidation | null;
+  /** Pre-deal rescore: the price book's estimate when the supplier stated no price (never a quote). */
+  fob_estimate_usd_per_mt?: number | null;
+  fob_estimate_basis?: string | null;
+  address?: string | null;
 }
 
 export interface MatchFactor {
@@ -670,6 +674,25 @@ export interface Opportunity {
   // counterparties buyer_signals / seller_candidates hold in this response.
   counterparty_counts?: Partial<Record<"buyers" | "suppliers", Record<ValidationStatus, number>>>;
   counterparty_filter?: "verified" | "all";
+  // Pre-deal rescore (POST /trade-min/opportunities/{id}/rescore)
+  rescored_at?: string | null;
+  rescore?: OpportunityRescore | null;
+}
+
+export interface RescorePair {
+  buyer: string;
+  seller: string;
+  before: { score: number; grade: MatchGrade; confidence: number };
+  after: { score: number; grade: MatchGrade; confidence: number };
+  still_needed: string[];
+  blockers: string[];
+}
+
+export interface OpportunityRescore {
+  at: string;
+  pairs: RescorePair[];
+  changes: string[];
+  note: string;
 }
 
 // GET /trade-min/sources — which demand / buyer / seller / enrichment sources

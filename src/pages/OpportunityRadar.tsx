@@ -20,11 +20,12 @@ import {
   useScanOpportunities,
   useCreateDeal,
   useTradeSources,
+  useRescoreOpportunity,
   getCounterpartyView,
   setCounterpartyView,
   type CounterpartyView,
 } from "@/api/hooks";
-import type { Opportunity, PairMatch, SellerCandidate, TradeSource } from "@/api/types";
+import type { Opportunity, OpportunityRescore, PairMatch, SellerCandidate, TradeSource } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -194,6 +195,8 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
         </div>
       )}
 
+      {opp.rescore && <RescoreSummary r={opp.rescore} />}
+
       <PairMatches pairs={opp.pair_matches ?? []} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -246,7 +249,15 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
                     )}
                   </div>
                   <span className="text-xs font-semibold shrink-0 text-[#28c2a0]" title="Estimated FOB, USD per MT">
-                    {s.estimated_fob_price_usd != null ? `$${s.estimated_fob_price_usd.toFixed(2)}` : "—"}
+                    {s.estimated_fob_price_usd != null ? (
+                      `$${s.estimated_fob_price_usd.toFixed(2)}`
+                    ) : s.fob_estimate_usd_per_mt != null ? (
+                      <span className="text-muted-foreground font-normal" title={`Estimate, not a quote: ${s.fob_estimate_basis ?? "price book"}`}>
+                        ~${s.fob_estimate_usd_per_mt.toFixed(0)} est.
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </span>
                 </div>
               ))}
@@ -423,6 +434,44 @@ function PairRow({ p }: { p: PairMatch }) {
   );
 }
 
+/** The latest pre-deal rescore: each pair before → after, what was filled, what the deal still has to get. */
+function RescoreSummary({ r }: { r: OpportunityRescore }) {
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2.5 space-y-2" data-testid="rescore-summary">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold">Rescored before the deal</span>
+        <span className="text-[10px] text-muted-foreground">{new Date(r.at).toLocaleString()}</span>
+      </div>
+      <div className="space-y-1">
+        {r.pairs.map((p) => {
+          const up = p.after.score - p.before.score;
+          return (
+            <div key={`${p.buyer}-${p.seller}`} className="text-xs flex items-center gap-2 flex-wrap">
+              <span className="font-medium">{p.buyer} ⇄ {p.seller}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {p.before.score.toFixed(0)} {p.before.grade} →{" "}
+                <span className="text-foreground font-semibold">{p.after.score.toFixed(0)} {p.after.grade}</span>
+              </span>
+              <span className={cn("text-[10px] tabular-nums", up > 0 ? "text-[#2ec28a]" : up < 0 ? "text-[#ff5d6c]" : "text-muted-foreground")}>
+                {up > 0 ? `+${up.toFixed(0)}` : up.toFixed(0)}
+              </span>
+              {p.blockers.length > 0 && <Badge variant="destructive" className="text-[9px]">{p.blockers[0]}</Badge>}
+            </div>
+          );
+        })}
+      </div>
+      {r.changes.length > 0 ? (
+        <ul className="text-[10px] text-muted-foreground list-disc pl-4 space-y-0.5">
+          {r.changes.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      ) : (
+        <p className="text-[10px] text-muted-foreground">Nothing new could be filled automatically (no Apify token, or nothing found).</p>
+      )}
+      <p className="text-[10px] text-muted-foreground italic">{r.note}</p>
+    </div>
+  );
+}
+
 function PairMatches({ pairs }: { pairs: PairMatch[] }) {
   if (pairs.length === 0) return null;
   return (
@@ -477,6 +526,7 @@ export function OpportunityRadar() {
   const { data: sourcesInfo } = useTradeSources();
   const scan = useScanOpportunities();
   const createDeal = useCreateDeal();
+  const rescore = useRescoreOpportunity();
   const [sortBy, setSortBy] = useState<"rank" | "market">("rank");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -501,7 +551,32 @@ export function OpportunityRadar() {
     }
   }
 
+  /** Fill the best pairs' gaps and score them again; returns the best score after. */
+  async function runRescore(opp: Opportunity): Promise<boolean> {
+    const before = opp.best_match_score;
+    const id = toast.loading("Rescoring the best buyer ⇄ seller pairs…", {
+      description: "Counterparty check, supplier address / GSTIN, port distance, supplier price estimate",
+    });
+    try {
+      const out = await rescore.mutateAsync({ id: opp.opportunity_id, view });
+      const after = out.best_match_score;
+      toast.success("Rescored", {
+        id,
+        description:
+          `Best match ${before != null ? before.toFixed(0) : "—"} → ${after != null ? after.toFixed(0) : "—"}` +
+          (out.rescore?.changes.length ? ` · ${out.rescore.changes.length} fact(s) filled` : " · nothing new found"),
+      });
+      return true;
+    } catch {
+      toast.error("Rescore failed", { id, description: "The deal can still start from the scan's scores." });
+      return false;
+    }
+  }
+
   async function handleStartDeal(opp: Opportunity) {
+    // Rescore first so the deal starts from the checked, better-scored pair
+    // (the backend skips its own rescore when this one ran in the last hour).
+    await runRescore(opp);
     try {
       const deal = await createDeal.mutateAsync({
         operator_id: "OP-901",
@@ -820,17 +895,34 @@ export function OpportunityRadar() {
                             Deal Started
                           </Badge>
                         ) : (
-                          <Button
-                            size="sm"
-                            className="h-7 text-xs gap-1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartDeal(opp);
-                            }}
-                            disabled={createDeal.isPending}
-                          >
-                            <ArrowUpRight className="w-3 h-3" /> Start prospect
-                          </Button>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              title="Fill what can be filled without contacting anyone (counterparty check, supplier address / GSTIN, port distance, estimated supplier price) and score the best pairs again"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedId(opp.opportunity_id);
+                                runRescore(opp);
+                              }}
+                              disabled={rescore.isPending}
+                            >
+                              <RefreshCw className={cn("w-3 h-3", rescore.isPending && "animate-spin")} /> Rescore
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs gap-1"
+                              title="Rescores the best pairs first, then starts the prospect"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartDeal(opp);
+                              }}
+                              disabled={createDeal.isPending || rescore.isPending}
+                            >
+                              <ArrowUpRight className="w-3 h-3" /> Start prospect
+                            </Button>
+                          </div>
                         )}
                       </td>
                     </tr>

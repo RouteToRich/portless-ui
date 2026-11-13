@@ -199,6 +199,14 @@ export const OpportunitiesApi = {
   // so the originating record stays fetchable by id for the deal Overview tab.
   get: (opportunityId: string) =>
     api.get<Opportunity>(`/trade-min/opportunities/${opportunityId}`).then((r) => r.data),
+  // Before a deal: fill what can be filled without contacting anyone, score the best pairs again.
+  rescore: (opportunityId: string, counterparties: "verified" | "all" = "verified") =>
+    api
+      .post<Opportunity>(`/trade-min/opportunities/${opportunityId}/rescore`, null, {
+        params: { counterparties },
+        timeout: 10 * 60 * 1000, // paid Apify runs (contact finder, screening)
+      })
+      .then((r) => r.data),
   // A scan runs every product × market corridor with paid Apify runs — minutes,
   // not seconds — so it gets its own 15-minute limit instead of the 2-minute default.
   scan: (payload: {

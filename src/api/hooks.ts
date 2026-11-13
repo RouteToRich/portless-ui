@@ -283,6 +283,15 @@ export function useOpportunities(counterparties: CounterpartyView = "verified") 
   });
 }
 
+/** Pre-deal rescore of an opportunity's best buyer × seller pairs. */
+export function useRescoreOpportunity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, view }: { id: string; view?: CounterpartyView }) => OpportunitiesApi.rescore(id, view),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["opportunities"] }),
+  });
+}
+
 /** Fetch the originating opportunity of a deal (record persists as CONVERTED).
  *  retry disabled: a 404 (e.g. in-memory store cleared by a server restart)
  *  should immediately fall back to the deal's own snapshot, not spin. */
