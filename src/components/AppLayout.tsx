@@ -28,7 +28,7 @@ import { useAuth } from "@/lib/auth";
 import { useApprovals, useGatewayHealth } from "@/api/hooks";
 import { KillSwitch } from "@/components/KillSwitch";
 import { AutomationToggle } from "@/components/AutomationToggle";
-import { useAutomationMode } from "@/lib/automationMode";
+import { AUTOMATION_AVAILABLE, useAutomationMode } from "@/lib/automationMode";
 import { FlaskConical } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -274,7 +274,7 @@ export function AppLayout() {
             />
           </div>
 
-          {user?.is_portless && <AutomationToggle />}
+          {AUTOMATION_AVAILABLE && user?.is_portless && <AutomationToggle />}
           {user?.is_portless && <KillSwitch />}
 
           {/* Notification bell — Approvals Inbox isn't reachable for non-Portless users */}

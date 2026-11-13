@@ -15,6 +15,7 @@ import { Catalogue } from "./pages/Catalogue";
 import { SystemHealth } from "./pages/SystemHealth";
 import { OrganizationsAdmin } from "./pages/OrganizationsAdmin";
 import { Automation } from "./pages/Automation";
+import { AUTOMATION_AVAILABLE } from "./lib/automationMode";
 import { Login } from "./pages/Login";
 import { useAuth } from "./lib/auth";
 
@@ -125,14 +126,16 @@ export default function App() {
               </RequirePortless>
             }
           />
-          <Route
-            path="/automation"
-            element={
-              <RequirePortless>
-                <Automation />
-              </RequirePortless>
-            }
-          />
+          {AUTOMATION_AVAILABLE && (
+            <Route
+              path="/automation"
+              element={
+                <RequirePortless>
+                  <Automation />
+                </RequirePortless>
+              }
+            />
+          )}
           <Route
             path="/autonomy"
             element={
