@@ -194,6 +194,25 @@ api.interceptors.response.use(
   }
 );
 
+// Automation mode: the backend starts its automation view server on first use and
+// answers 503 "starting" while it boots (a deployed backend can take ~30 s). Retry
+// those requests quietly instead of failing the page.
+const VIEW_STARTING_RETRIES = 20;
+const VIEW_STARTING_DELAY_MS = 3000;
+api.interceptors.response.use(undefined, async (error: AxiosError) => {
+  const config = error.config as (InternalAxiosRequestConfig & { _viewRetries?: number }) | undefined;
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+  const starting =
+    error.response?.status === 503 &&
+    String(config?.url ?? "").startsWith("/automation/view") &&
+    typeof detail === "string" &&
+    detail.includes("is starting");
+  if (!starting || !config || (config._viewRetries ?? 0) >= VIEW_STARTING_RETRIES) return Promise.reject(error);
+  config._viewRetries = (config._viewRetries ?? 0) + 1;
+  await new Promise((resolve) => setTimeout(resolve, VIEW_STARTING_DELAY_MS));
+  return api.request(config);
+});
+
 /**
  * One sentence for any auth / API error. Shapes seen here:
  *   { error: { code, message } }   auth-service and the gateway

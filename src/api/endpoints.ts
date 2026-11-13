@@ -288,6 +288,7 @@ export const AutomationApi = {
   stop: () => api.post("/automation/runs/stop").then((r) => r.data),
   clear: (scope: "test_data" | "everything") =>
     api.post<{ database: string; deleted: number }>("/automation/clear", { scope }).then((r) => r.data),
+  diagnostics: () => api.get<Record<string, unknown>>("/automation/diagnostics").then((r) => r.data),
 };
 
 export const AutonomyApi = {

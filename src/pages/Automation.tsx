@@ -162,6 +162,10 @@ export function Automation() {
     refetchInterval: running ? 5000 : false,
   });
 
+  // Why Automation mode does or does not work on this server (profile, database,
+  // view server and worker state, last log lines) — fetched only when opened.
+  const diagnostics = useQuery({ queryKey: ["automation-diagnostics"], queryFn: AutomationApi.diagnostics, enabled: false });
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["automation-status"] });
     qc.invalidateQueries({ queryKey: ["automation-cases"] });
@@ -229,6 +233,16 @@ export function Automation() {
         </CardHeader>
         <CardContent className="space-y-3">
           {status.isError && <p className="text-sm text-[#ff5d6c]">{errorText(status.error, "The automation service is unavailable.")}</p>}
+          <details onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && diagnostics.refetch()}>
+            <summary className="cursor-pointer text-[11px] text-muted-foreground">Server diagnostics</summary>
+            {diagnostics.isFetching && <p className="text-[11px] text-muted-foreground">Loading…</p>}
+            {diagnostics.isError && <p className="text-[11px] text-[#ff5d6c]">{errorText(diagnostics.error, "Diagnostics unavailable.")}</p>}
+            {diagnostics.data && (
+              <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-[11px]">
+                {JSON.stringify(diagnostics.data, null, 2)}
+              </pre>
+            )}
+          </details>
           {running && planned > 0 && (
             <div className="space-y-1">
               <Progress value={(done / planned) * 100} />
