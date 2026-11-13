@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HsCode } from "@/components/HsCode";
 
 // Kanban columns — groups of statuses
 const COLUMNS = [
@@ -120,7 +121,7 @@ function DealCard({ deal, onClick }: DealCardProps) {
       {/* HS Code + route */}
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-bold text-foreground font-mono">{deal.hs_code}</p>
+          <p className="text-sm"><HsCode code={deal.hs_code} className="font-bold text-foreground font-mono" /></p>
           {buyer && supplier && (
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {buyer.country} → {supplier.country}
@@ -473,7 +474,7 @@ export function DealBoard() {
                       )}
                     >
                       <td className="px-3 py-3">
-                        <span className="font-mono text-sm font-bold">{deal.hs_code}</span>
+                        <HsCode code={deal.hs_code} className="font-mono text-sm font-bold" />
                       </td>
                       <td className="px-3 py-3 min-w-0">
                         <div

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { HsCode } from "@/components/HsCode";
 
 type Role = "buyer" | "supplier";
 
@@ -131,7 +132,11 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
               <td className="py-2.5 pr-3 max-w-[230px]">
                 <Contact c={c} />
               </td>
-              <td className="py-2.5 pr-3 font-mono whitespace-nowrap">{c.hs_codes.join(", ")}</td>
+              <td className="py-2.5 pr-3">
+                <span className="flex flex-col gap-0.5">
+                  {c.hs_codes.map((hs) => <HsCode key={hs} code={hs} className="font-mono whitespace-nowrap" />)}
+                </span>
+              </td>
               {role === "supplier" && (
                 <td className="py-2.5 pr-3 whitespace-nowrap">
                   {c.estimated_fob_price_usd != null ? fmtUSD(c.estimated_fob_price_usd) : "—"}

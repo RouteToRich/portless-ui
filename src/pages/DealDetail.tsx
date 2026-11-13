@@ -99,6 +99,7 @@ import type {
   DealLedger,
   UpdatePartyRequest,
 } from "@/api/types";
+import { HsCode } from "@/components/HsCode";
 
 const NEGOTIATION_TERMINAL = new Set(["AGREED", "FAILED", "ESCALATED"]);
 
@@ -307,7 +308,7 @@ function OriginOpportunityCard({
         </div>
         {/* Route */}
         <p className="text-xs text-muted-foreground mt-1">
-          <span className="font-mono font-semibold text-foreground">{opp.hs_code}</span>
+          <HsCode code={opp.hs_code} className="font-mono font-semibold text-foreground" />
           {" · "}
           <span className="font-medium text-foreground">IN</span>
           <span className="mx-1">→</span>
@@ -2404,9 +2405,7 @@ export function DealDetail() {
                 </span>
               </h1>
               <span className="text-muted-foreground text-sm">·</span>
-              <span className="font-mono text-sm font-semibold text-[#4f8cff]">
-                HS {deal.hs_code}
-              </span>
+              <HsCode code={deal.hs_code} prefix="HS " className="font-mono text-sm font-semibold text-[#4f8cff]" />
               <StatusBadge status={deal.status} />
               {showsEscrow(deal) && <EscrowStatusChip deal={deal} />}
               <FreightStatusChip deal={deal} />

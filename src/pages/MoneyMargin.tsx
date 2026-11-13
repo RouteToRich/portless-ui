@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { HsCode } from "@/components/HsCode";
 
 function ledgerStatusVariant(status: string | null | undefined) {
   switch (status) {
@@ -420,7 +421,7 @@ export function MoneyMargin() {
                       idx % 2 === 0 ? "bg-transparent" : "bg-secondary/30"
                     )}
                   >
-                    <td className="px-4 py-3 font-mono font-bold text-sm">{deal.hs_code}</td>
+                    <td className="px-4 py-3"><HsCode code={deal.hs_code} className="font-mono font-bold text-sm" /></td>
                     <td className="px-4 py-3">
                       <StatusBadge status={deal.status} />
                     </td>

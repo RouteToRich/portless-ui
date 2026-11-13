@@ -9,6 +9,7 @@ import { QueryState } from "@/components/QueryState";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HsCode } from "@/components/HsCode";
 
 const BUYER_ORDER = ["selected", "interested", "followed_up", "contacted", "pending", "no_reply", "declined"] as const;
 const BUYER_LABEL: Record<string, string> = {
@@ -42,7 +43,7 @@ function ProspectRow({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-sm font-semibold text-[#4f8cff]">HS {deal.hs_code}</span>
+          <HsCode code={deal.hs_code} prefix="HS " className="font-mono text-sm font-semibold text-[#4f8cff]" />
           <span className="text-sm">→ {deal.market ?? "—"}</span>
           {deal.quantity_mt != null && <span className="text-xs text-muted-foreground">{deal.quantity_mt} MT</span>}
           <span className="font-mono text-[10px] text-muted-foreground">{deal.deal_id}</span>

@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HsCode } from "@/components/HsCode";
 
 /**
  * Read-only deals view for non-Portless (regular organization) users.
@@ -111,7 +112,7 @@ export function OrgDeals() {
                     <span className="font-mono text-xs">{deal.deal_id}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="font-mono text-sm font-bold">{deal.hs_code}</span>
+                    <HsCode code={deal.hs_code} className="font-mono text-sm font-bold" />
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={deal.status} />

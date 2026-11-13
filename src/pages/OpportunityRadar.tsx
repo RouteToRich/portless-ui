@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { HsCode } from "@/components/HsCode";
 
 function pct(v: number | null | undefined): string {
   return v == null ? "—" : `${v.toFixed(1)}%`;
@@ -690,7 +691,7 @@ export function OpportunityRadar() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-mono font-bold text-sm">{opp.hs_code}</span>
+                        <HsCode code={opp.hs_code} className="font-mono font-bold text-sm" />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 text-sm">
