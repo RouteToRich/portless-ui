@@ -14,6 +14,7 @@ import type {
   BuyerCandidate,
   CatalogueView,
   Counterparty,
+  ValidationStatus,
   CreateDealRequest,
   Deal,
   DealException,
@@ -190,7 +191,10 @@ export const DealsApi = {
 };
 
 export const OpportunitiesApi = {
-  list: () => api.get<Opportunity[]>("/trade-min/opportunities").then((r) => r.data),
+  // counterparties="verified" → each opportunity lists only the buyers / suppliers that
+  // passed the scan-time check (counts of the rest in counterparty_counts).
+  list: (counterparties: "verified" | "all" = "verified") =>
+    api.get<Opportunity[]>("/trade-min/opportunities", { params: { counterparties } }).then((r) => r.data),
   // Opportunities are marked CONVERTED (not deleted) when a deal is created,
   // so the originating record stays fetchable by id for the deal Overview tab.
   get: (opportunityId: string) =>
@@ -222,6 +226,8 @@ export interface CounterpartyFilters {
   country?: string;
   q?: string;
   limit?: number;
+  /** Scan-time check result; omit for every record. */
+  validation?: ValidationStatus;
 }
 
 // Every buyer / supplier a scan found — with or without an opportunity or deal.
@@ -232,6 +238,9 @@ export const CounterpartiesApi = {
         params: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")),
       })
       .then((r) => r.data),
+  /** Run the sanctions / e-mail / GST-IEC check now for one directory record. */
+  validate: (role: "buyer" | "supplier", id: string) =>
+    api.post<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/validate`).then((r) => r.data),
 };
 
 export type OnTimeout = "APPROVE" | "REJECT";

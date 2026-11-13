@@ -9,8 +9,10 @@ import {
   useCounterparties,
   useScanOpportunities,
   useTradeSources,
+  useValidateCounterparty,
 } from "@/api/hooks";
-import type { Counterparty } from "@/api/types";
+import type { Counterparty, ValidationStatus } from "@/api/types";
+import { ValidationBadge } from "@/components/ValidationBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -85,6 +87,38 @@ function Contact({ c }: { c: Counterparty }) {
   );
 }
 
+/** The scan-time check, plus "Check now" for a company never checked or due a re-check. */
+function CheckCell({ role, c }: { role: Role; c: Counterparty }) {
+  const validate = useValidateCounterparty();
+  async function run() {
+    try {
+      const out = await validate.mutateAsync({ role, id: c.id });
+      const st = out.validation?.status ?? "unverified";
+      toast[st === "verified" ? "success" : st === "failed" ? "error" : "info"](`${c.name}: ${st}`, {
+        description: out.validation?.reasons.slice(0, 2).join(" · ") || undefined,
+      });
+    } catch {
+      toast.error(`Could not check ${c.name}`);
+    }
+  }
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <ValidationBadge v={c.validation} />
+      {c.validation?.status !== "verified" && c.validation?.status !== "failed" && (
+        <button
+          type="button"
+          className="text-[10px] text-primary hover:underline disabled:opacity-50"
+          onClick={run}
+          disabled={validate.isPending}
+          title="Run sanctions screening, the e-mail check and (Indian suppliers) GST / IEC now: paid Apify runs"
+        >
+          {validate.isPending ? "Checking…" : "Check now"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] }) {
   return (
     <div className="overflow-x-auto">
@@ -92,6 +126,7 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
         <thead>
           <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
             <th className="py-2 pr-3 font-semibold">Company</th>
+            <th className="py-2 pr-3 font-semibold">Check</th>
             <th className="py-2 pr-3 font-semibold">Country</th>
             <th className="py-2 pr-3 font-semibold">Contact</th>
             <th className="py-2 pr-3 font-semibold">HS codes</th>
@@ -123,6 +158,9 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
                     {c.gstin && `GSTIN ${c.gstin}`} {c.iec && `IEC ${c.iec}`}
                   </p>
                 )}
+              </td>
+              <td className="py-2.5 pr-3">
+                <CheckCell role={role} c={c} />
               </td>
               <td className="py-2.5 pr-3 whitespace-nowrap">
                 <p>{c.country ?? "—"}</p>
@@ -172,6 +210,7 @@ function RolePanel({
   market,
   hs,
   country,
+  check,
   live,
 }: {
   role: Role;
@@ -179,6 +218,7 @@ function RolePanel({
   market: string;
   hs: string;
   country: string;
+  check: ValidationStatus | "";
   live: boolean;
 }) {
   const { data, isLoading, isError, refetch } = useCounterparties(
@@ -188,6 +228,7 @@ function RolePanel({
       market: market.trim().toUpperCase() || undefined,
       country: country.trim().toUpperCase() || undefined,
       hs_code: hs.trim() || undefined,
+      validation: check || undefined,
     },
     { live }
   );
@@ -222,7 +263,7 @@ function RolePanel({
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
           {live
             ? "Scan in progress — companies appear here as they are found (refreshing every 10 s)."
-            : q || market || hs || country
+            : q || market || hs || country || check
             ? "Nothing matches these filters."
             : "Run a scan: every company it finds is listed here, even when the scan creates no opportunity or deal. Add your products on the Catalogue page so the search uses product names."}
         </p>
@@ -245,6 +286,7 @@ export function BuyersSuppliers() {
   const [market, setMarket] = useState("");
   const [hs, setHs] = useState("");
   const [country, setCountry] = useState("");
+  const [check, setCheck] = useState<ValidationStatus | "">("");
   const [worldwide, setWorldwide] = useState(getWorldwideSearch);
   const indiaOnly = country.trim().toUpperCase() === "IN";
   const scan = useScanOpportunities();
@@ -474,6 +516,24 @@ export function BuyersSuppliers() {
                     India only
                   </Button>
                 )}
+                <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Check result">
+                  {([["", "All"], ["verified", "Verified"], ["unverified", "Unverified"], ["failed", "Failed"]] as const).map(
+                    ([value, label]) => (
+                      <button
+                        key={value || "all"}
+                        type="button"
+                        onClick={() => setCheck(value)}
+                        aria-pressed={check === value}
+                        className={cn(
+                          "h-8 px-2.5 text-xs border-r border-border last:border-r-0 transition-colors",
+                          check === value ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    )
+                  )}
+                </div>
                 <Input
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
@@ -499,10 +559,10 @@ export function BuyersSuppliers() {
               </div>
             </div>
             <TabsContent value="buyer" className="mt-3">
-              <RolePanel role="buyer" q={q} market={market} hs={hs} country={country} live={scanning} />
+              <RolePanel role="buyer" q={q} market={market} hs={hs} country={country} check={check} live={scanning} />
             </TabsContent>
             <TabsContent value="supplier" className="mt-3">
-              <RolePanel role="supplier" q={q} market={market} hs={hs} country={country} live={scanning} />
+              <RolePanel role="supplier" q={q} market={market} hs={hs} country={country} check={check} live={scanning} />
             </TabsContent>
           </Tabs>
         </CardContent>

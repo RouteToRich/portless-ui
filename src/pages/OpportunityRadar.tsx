@@ -20,6 +20,9 @@ import {
   useScanOpportunities,
   useCreateDeal,
   useTradeSources,
+  getCounterpartyView,
+  setCounterpartyView,
+  type CounterpartyView,
 } from "@/api/hooks";
 import type { Opportunity, PairMatch, SellerCandidate, TradeSource } from "@/api/types";
 import { Button } from "@/components/ui/button";
@@ -28,6 +31,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { HsCode } from "@/components/HsCode";
+import { SourcingStatusBadge, useOpportunitySourcing } from "@/components/SourcingStatusBadge";
+import { ValidationBadge } from "@/components/ValidationBadge";
 
 function pct(v: number | null | undefined): string {
   return v == null ? "—" : `${v.toFixed(1)}%`;
@@ -102,6 +107,22 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
         {value}
       </p>
     </div>
+  );
+}
+
+/** "2 unverified · 1 failed hidden" under a list shown in the verified-only view. */
+function HiddenHint({ opp, role }: { opp: Opportunity; role: "buyers" | "suppliers" }) {
+  if (opp.counterparty_filter !== "verified") return null;
+  const c = opp.counterparty_counts?.[role];
+  const hidden = (c?.unverified ?? 0) + (c?.failed ?? 0);
+  if (!c || hidden === 0) return null;
+  return (
+    <p className="text-[10px] text-muted-foreground mt-1.5">
+      {[c.unverified ? `${c.unverified} unverified` : null, c.failed ? `${c.failed} failed` : null]
+        .filter(Boolean)
+        .join(" · ")}{" "}
+      hidden: switch the counterparty view to "All" to see them
+    </p>
   );
 }
 
@@ -183,7 +204,9 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
             <span className="text-xs font-semibold">Seller Candidates ({sellers.length})</span>
           </div>
           {sellers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No sellers found</p>
+            <p className="text-xs text-muted-foreground">
+              {opp.counterparty_filter === "verified" ? "No verified sellers yet" : "No sellers found"}
+            </p>
           ) : (
             <div className="space-y-1.5">
               {sellers.map((s) => (
@@ -200,6 +223,7 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
                         </Badge>
                       )}
                       {fitChip(s.fit_score)}
+                      <ValidationBadge v={s.validation} />
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {[s.location_city, s.location_state].filter(Boolean).join(", ") || "—"}
@@ -228,6 +252,7 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
               ))}
             </div>
           )}
+          <HiddenHint opp={opp} role="suppliers" />
         </div>
 
         {/* Buyers */}
@@ -237,7 +262,9 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
             <span className="text-xs font-semibold">Buyer Signals ({buyers.length})</span>
           </div>
           {buyers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No buyer signals</p>
+            <p className="text-xs text-muted-foreground">
+              {opp.counterparty_filter === "verified" ? "No verified buyers yet" : "No buyer signals"}
+            </p>
           ) : (
             <div className="space-y-1.5">
               {buyers.map((b, i) => {
@@ -256,6 +283,7 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
                           </Badge>
                         )}
                         {fitChip(b.fit_score)}
+                        <ValidationBadge v={b.validation} />
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         {b.buyer_country}
@@ -296,6 +324,7 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
               })}
             </div>
           )}
+          <HiddenHint opp={opp} role="buyers" />
         </div>
       </div>
     </div>
@@ -443,7 +472,8 @@ function ArbitrageBar({ rank }: { rank: number }) {
 
 
 export function OpportunityRadar() {
-  const { data, isLoading, isError, refetch } = useOpportunities();
+  const [view, setView] = useState<CounterpartyView>(getCounterpartyView);
+  const { data, isLoading, isError, refetch } = useOpportunities(view);
   const { data: sourcesInfo } = useTradeSources();
   const scan = useScanOpportunities();
   const createDeal = useCreateDeal();
@@ -454,6 +484,7 @@ export function OpportunityRadar() {
     if (sortBy === "rank") return b.arbitrage_rank - a.arbitrage_rank;
     return a.market.localeCompare(b.market);
   });
+  const { data: sourcing } = useOpportunitySourcing(opportunities.map((o) => o.opportunity_id));
 
   const topHs = opportunities[0]?.hs_code ?? "—";
   const avgRank =
@@ -598,6 +629,30 @@ export function OpportunityRadar() {
             {s === "rank" ? "Arbitrage Rank" : "Market"}
           </button>
         ))}
+        <span
+          className="text-xs text-muted-foreground ml-4"
+          title="Verified: sanctions screening clear, a deliverable e-mail and no GST / IEC red flag (checked at scan time for the top buyers and suppliers of each opportunity)"
+        >
+          Buyers &amp; suppliers:
+        </span>
+        {(["verified", "all"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => {
+              setView(v);
+              setCounterpartyView(v);
+            }}
+            className={cn(
+              "text-xs px-3 py-1 rounded-md border transition-colors",
+              view === v
+                ? "bg-primary/15 text-primary border-primary/30"
+                : "border-border text-muted-foreground hover:bg-secondary"
+            )}
+            data-testid={`radar-counterparties-${v}`}
+          >
+            {v === "verified" ? "Verified only" : "All"}
+          </button>
+        ))}
       </div>
 
       {/* Opportunities grid */}
@@ -629,8 +684,9 @@ export function OpportunityRadar() {
       ) : (
         <>
           {/* Table view */}
+          {/* RFQ / price column: one request for every listed opportunity (refreshed every 30 s). */}
           <div className="rounded-xl border border-border overflow-x-auto">
-            <table className="w-full min-w-[880px]">
+            <table className="w-full min-w-[1040px]">
               <thead>
                 <tr className="bg-popover border-b border-border">
                   <th className="w-8 px-2 py-3" />
@@ -654,6 +710,12 @@ export function OpportunityRadar() {
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Buyer Signals
+                  </th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+                    title="Supplier side of the deal made from this opportunity: RFQs sent, quotes and whether a supplier confirmed the order at its price"
+                  >
+                    RFQ / Price
                   </th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -750,6 +812,9 @@ export function OpportunityRadar() {
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        <SourcingStatusBadge status={sourcing?.[opp.opportunity_id]} />
+                      </td>
+                      <td className="px-4 py-3">
                         {isConverted ? (
                           <Badge variant="outline" className="text-[10px] gap-1">
                             Deal Started
@@ -771,7 +836,7 @@ export function OpportunityRadar() {
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-border">
-                        <td colSpan={9} className="p-0">
+                        <td colSpan={10} className="p-0">
                           <OpportunityDetail opp={opp} />
                         </td>
                       </tr>

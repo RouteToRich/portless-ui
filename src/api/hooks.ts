@@ -255,8 +255,32 @@ export function useUpdateDealStatus() {
 
 // ── Opportunities ────────────────────────────────────────────────────────────
 
-export function useOpportunities() {
-  return useQuery({ queryKey: ["opportunities"], queryFn: OpportunitiesApi.list });
+export type CounterpartyView = "verified" | "all";
+const COUNTERPARTY_VIEW_KEY = "portless.radar.counterparties";
+
+/** The radar's "Verified only / All" counterparty toggle — remembered in this browser.
+ *  Default verified: only buyers / suppliers that passed the scan-time check. */
+export function getCounterpartyView(): CounterpartyView {
+  try {
+    return localStorage.getItem(COUNTERPARTY_VIEW_KEY) === "all" ? "all" : "verified";
+  } catch {
+    return "verified";
+  }
+}
+
+export function setCounterpartyView(view: CounterpartyView): void {
+  try {
+    localStorage.setItem(COUNTERPARTY_VIEW_KEY, view);
+  } catch {
+    // storage unavailable: the toggle still applies to this page
+  }
+}
+
+export function useOpportunities(counterparties: CounterpartyView = "verified") {
+  return useQuery({
+    queryKey: ["opportunities", counterparties],
+    queryFn: () => OpportunitiesApi.list(counterparties),
+  });
 }
 
 /** Fetch the originating opportunity of a deal (record persists as CONVERTED).
@@ -332,6 +356,18 @@ export function useScanOpportunities() {
 
 /** Buyers or suppliers the scanner found — independent of opportunities and deals.
  *  Polls every 10 s while a scan is running so companies appear as they are found. */
+/** Run the scan-time check now for one buyer / supplier of the directory. */
+export function useValidateCounterparty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ role, id }: { role: "buyer" | "supplier"; id: string }) => CounterpartiesApi.validate(role, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["counterparties"] });
+      qc.invalidateQueries({ queryKey: ["opportunities"] });
+    },
+  });
+}
+
 export function useCounterparties(
   role: "buyer" | "supplier",
   filters: CounterpartyFilters = {},

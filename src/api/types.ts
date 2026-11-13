@@ -530,6 +530,24 @@ export interface DealTimeline {
   warnings: string[];
 }
 
+/** Scan-time check of a buyer / supplier (backend services/trade_min/validation.py).
+ *  verified = sanctions clear + deliverable e-mail + no registry red flag;
+ *  failed = sanctions block / GST or IEC inactive / DGFT denied; unverified = not checked yet. */
+export type ValidationStatus = "verified" | "unverified" | "failed";
+
+export interface CounterpartyValidation {
+  status: ValidationStatus;
+  reasons: string[];
+  email?: string | null;
+  sanctions?: string;
+  sanctions_reason?: string | null;
+  evidence_url?: string | null;
+  gst?: string | null;
+  iec?: string | null;
+  dgft_denied?: string | null;
+  checked_at?: string | null;
+}
+
 export interface SellerCandidate {
   candidate_id: string;
   company_name: string;
@@ -548,6 +566,7 @@ export interface SellerCandidate {
   iec?: string | null;
   fit_score?: number | null;
   price_unit?: string | null;
+  validation?: CounterpartyValidation | null;
 }
 
 export interface MatchFactor {
@@ -607,6 +626,7 @@ export interface BuyerSignal {
   shipments_12m?: number | null;
   hs_codes?: string[];
   last_import_date?: string | null;
+  validation?: CounterpartyValidation | null;
 }
 
 export interface TariffData {
@@ -646,6 +666,10 @@ export interface Opportunity {
   // via the export-market actor) — the real buyer price anchor.
   price_benchmark_usd_per_mt?: number | null;
   price_benchmark_source?: string | null;
+  // Scan-time counterparty check: counts over the whole opportunity, and which
+  // counterparties buyer_signals / seller_candidates hold in this response.
+  counterparty_counts?: Partial<Record<"buyers" | "suppliers", Record<ValidationStatus, number>>>;
+  counterparty_filter?: "verified" | "all";
 }
 
 // GET /trade-min/sources — which demand / buyer / seller / enrichment sources
@@ -681,6 +705,7 @@ export interface Counterparty {
   times_seen: number;
   first_seen_at: string;
   last_seen_at: string;
+  validation?: CounterpartyValidation | null;
 }
 
 export interface TradeSource {
