@@ -305,8 +305,22 @@ export function useScanOpportunities() {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ["scan"],
-    mutationFn: (opts: { worldwide?: boolean } | void) =>
-      OpportunitiesApi.scan({ worldwide_search: opts?.worldwide ?? getWorldwideSearch() }),
+    mutationFn: (
+      opts: {
+        worldwide?: boolean;
+        // A scan for one chosen product (HS picker): its code, the markets to search and the
+        // product name the Apify search uses. Without them the scan runs the catalogue / defaults.
+        hs_codes?: string[];
+        target_markets?: string[];
+        product_names?: Record<string, string>;
+      } | void,
+    ) =>
+      OpportunitiesApi.scan({
+        worldwide_search: opts?.worldwide ?? getWorldwideSearch(),
+        ...(opts?.hs_codes?.length ? { hs_codes: opts.hs_codes } : {}),
+        ...(opts?.target_markets?.length ? { target_markets: opts.target_markets } : {}),
+        ...(opts?.product_names ? { product_names: opts.product_names } : {}),
+      }),
     // Even a failed / timed-out scan request has already stored what it found
     // (the backend keeps scanning and recording), so refresh either way.
     onSettled: () => {

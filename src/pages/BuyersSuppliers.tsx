@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HsCode } from "@/components/HsCode";
+import { HsPicker, type HsChoice } from "@/components/HsPicker";
 
 type Role = "buyer" | "supplier";
 
@@ -252,6 +253,38 @@ export function BuyersSuppliers() {
   const { data: buyers } = useCounterparties("buyer", {}, { live: scanning });
   const { data: suppliers } = useCounterparties("supplier", {}, { live: scanning });
 
+  // "Find buyers & suppliers for a product": an HS code picked by product name, the name the
+  // Apify search uses (editable), and the markets — one scan for just that product.
+  const [pick, setPick] = useState<HsChoice | null>(null);
+  const [productName, setProductName] = useState("");
+  const [pickMarkets, setPickMarkets] = useState("");
+
+  async function handleProductScan() {
+    if (!pick) return;
+    const name = productName.trim() || pick.name || "";
+    if (!name || /^\d+$/.test(name)) {
+      toast.error("Give the product a name to search for (a bare HS number finds no companies).");
+      return;
+    }
+    const markets = pickMarkets.split(/[\s,]+/).map((m) => m.trim().toUpperCase()).filter((m) => /^[A-Z]{2}$/.test(m));
+    setHs(pick.code);
+    try {
+      const opps = await scan.mutateAsync({
+        worldwide,
+        hs_codes: [pick.code],
+        target_markets: markets,
+        product_names: { [pick.code]: name },
+      });
+      toast.success(`Search for ${name} complete`, {
+        description: `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} · the buyers and suppliers found are listed below`,
+      });
+    } catch {
+      toast.warning("The search is still running on the server", {
+        description: "Companies found so far are listed; use Refresh to load more.",
+      });
+    }
+  }
+
   async function handleScan() {
     try {
       const opps = await scan.mutateAsync({ worldwide });
@@ -316,6 +349,48 @@ export function BuyersSuppliers() {
         </Button>
         </div>
       </div>
+
+      <Card>
+        <CardContent className="pt-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold">Find buyers &amp; suppliers for a product</p>
+            <p className="text-[11px] text-muted-foreground">
+              Pick the HS code by product name; the Apify search looks for importers in the markets you list (or your catalogue's
+              markets) and for suppliers in India{worldwide ? ", plus every country while Worldwide is on" : ""}. Each search costs paid Apify runs.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_1fr_auto] gap-2 items-start">
+            <HsPicker
+              value={pick}
+              onChange={(c) => {
+                setPick(c);
+                setProductName(c?.name ?? "");
+              }}
+            />
+            <Input
+              value={productName}
+              onChange={(e) => setProductName(e.target.value)}
+              placeholder="Name to search for, e.g. basmati rice"
+              className="h-8 text-xs"
+              aria-label="Product name to search for"
+              disabled={!pick}
+            />
+            <Input
+              value={pickMarkets}
+              onChange={(e) => setPickMarkets(e.target.value)}
+              placeholder="Markets: AE, DE, US"
+              className="h-8 text-xs"
+              aria-label="Markets to search (country codes)"
+              disabled={!pick}
+            />
+            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={handleProductScan} disabled={!pick || scanning}>
+              {scanning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+              {scanning ? "Searching…" : "Find buyers & suppliers"}
+            </Button>
+          </div>
+          {pick?.description && <p className="text-[10px] text-muted-foreground">HS {pick.code}: {pick.description}</p>}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[

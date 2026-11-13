@@ -197,8 +197,19 @@ export const OpportunitiesApi = {
     api.get<Opportunity>(`/trade-min/opportunities/${opportunityId}`).then((r) => r.data),
   // A scan runs every product × market corridor with paid Apify runs — minutes,
   // not seconds — so it gets its own 15-minute limit instead of the 2-minute default.
-  scan: (payload: { hs_codes?: string[]; target_markets?: string[]; worldwide_search?: boolean }) =>
-    api.post<Opportunity[]>("/trade-min/scan", payload, { timeout: 15 * 60 * 1000 }).then((r) => r.data),
+  scan: (payload: {
+    hs_codes?: string[];
+    target_markets?: string[];
+    worldwide_search?: boolean;
+    product_names?: Record<string, string>;
+  }) => api.post<Opportunity[]>("/trade-min/scan", payload, { timeout: 15 * 60 * 1000 }).then((r) => r.data),
+  // The HS code picker: codes matching a code prefix or product words, with names.
+  hsSearch: (q: string) =>
+    api
+      .get<{ results: { code: string; name: string | null; description: string | null }[] }>("/trade-min/hs-search", {
+        params: { q, limit: 20 },
+      })
+      .then((r) => r.data.results),
   // Which demand / buyer / seller / enrichment sources the scanner can reach
   // (live / stub / open) — incl. the PortLess-owned Apify actors.
   sources: () => api.get<TradeSourcesResponse>("/trade-min/sources").then((r) => r.data),
