@@ -335,12 +335,13 @@ export function useScanOpportunities() {
 export function useCounterparties(
   role: "buyer" | "supplier",
   filters: CounterpartyFilters = {},
-  options: { live?: boolean } = {}
+  options: { live?: boolean; enabled?: boolean } = {}
 ) {
   return useQuery({
     queryKey: ["counterparties", role, filters],
     queryFn: () => CounterpartiesApi.list(role, filters),
     refetchInterval: options.live ? 10_000 : false,
+    enabled: options.enabled ?? true,
   });
 }
 

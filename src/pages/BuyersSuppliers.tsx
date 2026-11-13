@@ -216,12 +216,14 @@ function RolePanel({
   if (rows.length === 0) {
     return (
       <div className="py-12 text-center space-y-1">
-        <p className="text-sm font-medium">No {role === "buyer" ? "buyers" : "suppliers"} yet</p>
+        <p className="text-sm font-medium">
+          {live ? `Searching for ${role === "buyer" ? "buyers" : "suppliers"}…` : `No ${role === "buyer" ? "buyers" : "suppliers"} yet`}
+        </p>
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
-          {q || market || hs || country
-            ? "Nothing matches these filters."
-            : live
+          {live
             ? "Scan in progress — companies appear here as they are found (refreshing every 10 s)."
+            : q || market || hs || country
+            ? "Nothing matches these filters."
             : "Run a scan: every company it finds is listed here, even when the scan creates no opportunity or deal. Add your products on the Catalogue page so the search uses product names."}
         </p>
       </div>
@@ -252,6 +254,11 @@ export function BuyersSuppliers() {
   const { data: sourcesInfo } = useTradeSources();
   const { data: buyers } = useCounterparties("buyer", {}, { live: scanning });
   const { data: suppliers } = useCounterparties("supplier", {}, { live: scanning });
+  // While an HS code is chosen (a product search, or the HS filter), the counters count
+  // that product only — they start at 0 for a new search and rise as companies are found.
+  const hsFilter = hs.trim();
+  const { data: hsBuyers } = useCounterparties("buyer", { hs_code: hsFilter }, { live: scanning, enabled: !!hsFilter });
+  const { data: hsSuppliers } = useCounterparties("supplier", { hs_code: hsFilter }, { live: scanning, enabled: !!hsFilter });
 
   // "Find buyers & suppliers for a product": an HS code picked by product name, the name the
   // Apify search uses (editable), and the markets — one scan for just that product.
@@ -394,8 +401,20 @@ export function BuyersSuppliers() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
-          { label: "Buyers found", value: buyers?.length ?? 0, icon: Users, color: "#4f8cff" },
-          { label: "Suppliers found", value: suppliers?.length ?? 0, icon: Factory, color: "#28c2a0" },
+          {
+            label: hsFilter ? `Buyers found for HS ${hsFilter}` : "Buyers found",
+            value: (hsFilter ? hsBuyers?.length : buyers?.length) ?? 0,
+            total: buyers?.length ?? 0,
+            icon: Users,
+            color: "#4f8cff",
+          },
+          {
+            label: hsFilter ? `Suppliers found for HS ${hsFilter}` : "Suppliers found",
+            value: (hsFilter ? hsSuppliers?.length : suppliers?.length) ?? 0,
+            total: suppliers?.length ?? 0,
+            icon: Factory,
+            color: "#28c2a0",
+          },
         ].map((s) => {
           const Icon = s.icon;
           return (
@@ -411,7 +430,9 @@ export function BuyersSuppliers() {
                   <p className="text-[10px] text-muted-foreground">{s.label}</p>
                   <p className="text-xl font-bold" style={{ color: s.color }}>
                     {s.value}
+                    {hsFilter && scanning && <RefreshCw className="inline ml-2 w-3.5 h-3.5 animate-spin opacity-60" />}
                   </p>
+                  {hsFilter && <p className="text-[10px] text-muted-foreground">{s.total} in the whole directory</p>}
                 </div>
               </CardContent>
             </Card>
