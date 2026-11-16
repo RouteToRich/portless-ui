@@ -52,17 +52,29 @@ function FitBadge({ score }: { score: number | null }) {
 }
 
 function OutcomeBadge({ c }: { c: Counterparty }) {
-  const hasOpp = c.opportunity_ids.length > 0;
+  // The badge counts what the Opportunity Radar lists now. `opportunity_ids` is
+  // history: an opportunity expires, becomes a deal, or is replaced by a newer scan.
+  const ever = c.opportunity_ids.length;
+  const open = c.open_opportunity_ids?.length ?? ever;
+  const past = ever - open;
+  const plural = (n: number) => `${n} opportunit${n === 1 ? "y" : "ies"}`;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <Badge variant={hasOpp ? "teal" : "outline"} className="whitespace-nowrap">
-            {hasOpp ? `${c.opportunity_ids.length} opportunit${c.opportunity_ids.length === 1 ? "y" : "ies"}` : "No opportunity"}
+          <Badge variant={open > 0 ? "teal" : "outline"} className="whitespace-nowrap">
+            {open > 0 ? `${plural(open)} open` : ever > 0 ? "No open opportunity" : "No opportunity"}
           </Badge>
         </span>
       </TooltipTrigger>
-      <TooltipContent className="max-w-xs">{c.last_outcome || "No scan outcome recorded"}</TooltipContent>
+      <TooltipContent className="max-w-xs">
+        <div>{c.last_outcome || "No scan outcome recorded"}</div>
+        {past > 0 && (
+          <div className="mt-1 text-muted-foreground">
+            Was in {plural(past)} no longer on the radar (expired, turned into a deal, or replaced by a newer scan).
+          </div>
+        )}
+      </TooltipContent>
     </Tooltip>
   );
 }

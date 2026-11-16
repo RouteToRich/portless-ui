@@ -722,7 +722,10 @@ export interface Counterparty {
   estimated_fob_price_usd: number | null;
   hs_codes: string[];
   markets: string[];
+  /** Every opportunity a scan ever found it in (history). */
   opportunity_ids: string[];
+  /** Those the Opportunity Radar lists now; null when the server could not tell. */
+  open_opportunity_ids?: string[] | null;
   /** "opportunity <id>" or why the latest scan produced none. */
   last_outcome: string;
   times_seen: number;
