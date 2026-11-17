@@ -352,6 +352,9 @@ export const AutomationApi = {
 
 export const AutonomyApi = {
   killSwitch: () => api.get<KillSwitchState>("/hitl-approval/kill-switch").then((r) => r.data),
+  /** Re-read the stored state now (when it was unreadable). */
+  recheckKillSwitch: () =>
+    api.get<KillSwitchState>("/hitl-approval/kill-switch", { params: { refresh: true } }).then((r) => r.data),
   setKillSwitch: (payload: { paused: boolean; reason: string }) =>
     api.post<KillSwitchState>("/hitl-approval/kill-switch", payload).then((r) => r.data),
   get: () =>

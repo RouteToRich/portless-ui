@@ -1530,6 +1530,8 @@ export interface KillSwitchState {
   reason: string | null;
   by: string | null;
   at: string | null;
+  /** Stopped only because the stored state cannot be read (database not reachable) — nobody paused. */
+  unreadable?: boolean;
 }
 
 export interface AcceptanceRequest {
