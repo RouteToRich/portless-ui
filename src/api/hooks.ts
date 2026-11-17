@@ -359,7 +359,17 @@ export function useScanOpportunities() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["opportunities"] });
       qc.invalidateQueries({ queryKey: ["counterparties"] });
+      qc.invalidateQueries({ queryKey: ["scan-report"] });
     },
+  });
+}
+
+/** The last scan's per-corridor result: opportunity, or why it was dropped. */
+export function useScanReport() {
+  return useQuery({
+    queryKey: ["scan-report"],
+    queryFn: () => OpportunitiesApi.scanReport(),
+    staleTime: 30_000,
   });
 }
 

@@ -571,6 +571,12 @@ export interface SellerCandidate {
   fob_estimate_usd_per_mt?: number | null;
   fob_estimate_basis?: string | null;
   address?: string | null;
+  /** What the supplier's own site says it does. */
+  fit_reason?: string | null;
+  /** "domain" when the name could only be read from the website address. */
+  name_source?: string | null;
+  /** Data-quality warnings: product_mismatch, name_from_domain. */
+  flags?: string[];
 }
 
 export interface MatchFactor {
@@ -631,12 +637,18 @@ export interface BuyerSignal {
   hs_codes?: string[];
   last_import_date?: string | null;
   validation?: CounterpartyValidation | null;
+  name_source?: string | null;
+  /** Data-quality warnings: role_suspect (looks like an Indian exporter), name_from_domain. */
+  flags?: string[];
 }
 
 export interface TariffData {
   applied_duty_pct?: number | null;
   gst_vat_pct?: number | null;
+  /** Import duty subtracted from the gap. VAT is shown but not subtracted (reclaimed by the importer). */
   total_landed_cost_add_pct?: number | null;
+  /** False when no tariff source answered: the 0 % duty is unconfirmed. */
+  verified?: boolean;
   ntb_flags?: string[];
   rules_of_origin?: string | null;
 }
@@ -677,6 +689,63 @@ export interface Opportunity {
   // Pre-deal rescore (POST /trade-min/opportunities/{id}/rescore)
   rescored_at?: string | null;
   rescore?: OpportunityRescore | null;
+  // Corridor facts from the export-market actor (UN Comtrade)
+  market_avg_usd_per_mt?: number | null;
+  india_to_market_usd_per_mt?: number | null;
+  india_world_fob_usd_per_mt?: number | null;
+  import_value_usd?: number | null;
+  import_growth_pct?: number | null;
+  india_share_pct?: number | null;
+  competitors?: { country: string; share_pct?: number | null; unit_value_usd_per_mt?: number | null }[];
+  india_price_advantage_pct?: number | null;
+  freight_pct?: number | null;
+  gap_suspect?: boolean;
+  gap_note?: string | null;
+  // Expected profit (backend services/trade_min/profit.py) — the radar's order
+  profit?: OpportunityProfit | null;
+  flags?: string[];
+  corridor_deals?: { deal_id: string; status: string; opportunity_id?: string | null }[];
+}
+
+export interface OpportunityProfit {
+  buyer_price_usd_per_mt?: number | null;
+  buyer_price_basis?: "buyer_quote" | "price_book" | "india_to_market" | "market_average" | null;
+  supplier_price_usd_per_mt?: number | null;
+  supplier_price_basis?: "supplier_quote" | "price_book" | "mandi" | "india_export_average" | null;
+  supplier_price_note?: string | null;
+  landed_cost_usd_per_mt?: number | null;
+  freight_usd_per_mt?: number | null;
+  margin_usd_per_mt?: number | null;
+  margin_pct?: number | null;
+  container_mt: number;
+  margin_per_container_usd?: number | null;
+  lot_mt: number;
+  lot_basis: string;
+  p_close?: number | null;
+  p_close_basis: string[];
+  expected_profit_usd?: number | null;
+  estimated: boolean;
+  meets_floor?: boolean | null;
+  margin_floor_pct?: number | null;
+}
+
+// GET /trade-min/scan/report — what the last scan did per product × market.
+export interface ScanCorridorResult {
+  hs_code: string;
+  market: string;
+  result: "opportunity" | "dropped" | "error";
+  reason: string;
+  opportunity_id?: string | null;
+}
+
+export interface ScanReport {
+  scan_id: string;
+  started_at: string;
+  finished_at?: string | null;
+  corridors: ScanCorridorResult[];
+  opportunities: number;
+  dropped: number;
+  errors: number;
 }
 
 export interface RescorePair {

@@ -13,11 +13,14 @@ import {
   Users,
   Percent,
   Handshake,
+  AlertTriangle,
 } from "lucide-react";
-import { cn, fmtUSD } from "@/lib/utils";
+import { cn, countdown, fmtPct, fmtUSD, timeAgo } from "@/lib/utils";
 import {
   useOpportunities,
   useScanOpportunities,
+  useScanReport,
+  useCatalogue,
   useCreateDeal,
   useTradeSources,
   useRescoreOpportunity,
@@ -25,7 +28,10 @@ import {
   setCounterpartyView,
   type CounterpartyView,
 } from "@/api/hooks";
-import type { Opportunity, OpportunityRescore, PairMatch, SellerCandidate, TradeSource } from "@/api/types";
+import type { Opportunity, OpportunityRescore, PairMatch, TradeSource } from "@/api/types";
+import { useAuth } from "@/lib/auth";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -176,9 +182,14 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
             )}
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-            <span>Applied duty: <span className="text-foreground font-medium">{pct(t.applied_duty_pct)}</span></span>
-            <span>GST/VAT: <span className="text-foreground font-medium">{pct(t.gst_vat_pct)}</span></span>
-            <span>Total landed add: <span className="text-foreground font-medium">{pct(t.total_landed_cost_add_pct)}</span></span>
+            <span>
+              Applied duty: <span className="text-foreground font-medium">{pct(t.applied_duty_pct)}</span>
+              {t.verified === false && <span className="ml-1 text-[#f5a623]" title="No tariff source answered">(unverified)</span>}
+            </span>
+            <span title="Shown for reference: a business importer reclaims VAT, so it is not subtracted from the gap">
+              VAT (reclaimable): <span className="text-foreground font-medium">{pct(t.gst_vat_pct)}</span>
+            </span>
+            <span>Net gap after duty + freight: <span className="text-foreground font-medium">{pct(opp.net_price_gap_pct)}</span></span>
             {t.rules_of_origin && (
               <span>Rules of origin: <span className="text-foreground font-medium">{t.rules_of_origin}</span></span>
             )}
@@ -194,6 +205,10 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
           )}
         </div>
       )}
+
+      <ProfitPanel opp={opp} />
+
+      <CorridorFacts opp={opp} />
 
       {opp.rescore && <RescoreSummary r={opp.rescore} />}
 
@@ -227,7 +242,11 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
                       )}
                       {fitChip(s.fit_score)}
                       <ValidationBadge v={s.validation} />
+                      <FlagChips flags={s.flags} />
                     </p>
+                    {s.fit_reason && (
+                      <p className="text-[10px] text-muted-foreground/90 italic line-clamp-1" title={s.fit_reason}>{s.fit_reason}</p>
+                    )}
                     <p className="text-[10px] text-muted-foreground">
                       {[s.location_city, s.location_state].filter(Boolean).join(", ") || "—"}
                       {s.annual_capacity_mt != null && ` · ${s.annual_capacity_mt.toLocaleString()} MT/yr`}
@@ -295,6 +314,7 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
                         )}
                         {fitChip(b.fit_score)}
                         <ValidationBadge v={b.validation} />
+                        <FlagChips flags={b.flags} />
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         {b.buyer_country}
@@ -490,64 +510,362 @@ function PairMatches({ pairs }: { pairs: PairMatch[] }) {
   );
 }
 
-function ArbitrageBar({ rank }: { rank: number }) {
-  // Higher rank = better (max ~10). Guard against missing/non-numeric values.
-  const safeRank = Number.isFinite(rank) ? rank : 0;
-  const pct = Math.min(100, (safeRank / 10) * 100);
+/** The market score (0–100): demand × net price gap after duty and freight. */
+function ScoreBar({ score }: { score: number }) {
+  const safe = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
+  const tone = safe >= 70 ? "#2ec28a" : safe >= 40 ? "#f5a623" : "#ff5d6c";
   return (
     <div className="flex items-center gap-2">
-      <Progress
-        value={pct}
-        className="h-1.5 flex-1"
-        indicatorClassName={
-          safeRank >= 7
-            ? "bg-[#2ec28a]"
-            : safeRank >= 4
-            ? "bg-[#f5a623]"
-            : "bg-[#ff5d6c]"
-        }
-      />
-      <span
-        className={cn(
-          "text-xs font-bold w-8 text-right",
-          safeRank >= 7 ? "text-[#2ec28a]" : safeRank >= 4 ? "text-[#f5a623]" : "text-[#ff5d6c]"
-        )}
-      >
-        {safeRank.toFixed(1)}
+      <Progress value={safe} className="h-1.5 flex-1" indicatorClassName={safe >= 70 ? "bg-[#2ec28a]" : safe >= 40 ? "bg-[#f5a623]" : "bg-[#ff5d6c]"} />
+      <span className="text-xs font-bold w-8 text-right tabular-nums" style={{ color: tone }}>
+        {safe.toFixed(0)}
       </span>
     </div>
   );
 }
 
+// ── Labels ──────────────────────────────────────────────────────────────────
+
+const FLAG_INFO: Record<string, { label: string; tone: "warn" | "bad" | "good" | "info"; hint: string }> = {
+  price_check_needed: { label: "Check price", tone: "warn", hint: "The gross gap is implausibly large: most likely a different grade or origin mix, not a real arbitrage" },
+  tariff_unverified: { label: "Duty unverified", tone: "warn", hint: "No tariff source answered: the 0 % duty is not confirmed" },
+  no_supplier_price: { label: "No supplier price", tone: "info", hint: "The supplier price is an estimate (mandi or India's export average) until a supplier quotes" },
+  below_margin_floor: { label: "Under margin floor", tone: "warn", hint: "The estimated margin is under the margin floor" },
+  negative_margin: { label: "Loss at these prices", tone: "bad", hint: "The buyer price does not cover the landed cost" },
+  india_cheaper_than_leader: { label: "India cheaper", tone: "good", hint: "India sells into this market below the leading other origin: lead with price in the introduction" },
+  role_suspect: { label: "Looks like an Indian exporter", tone: "bad", hint: "Indian legal form, domain, phone or 'exporter from India' text: not an importer in the market. Kept out of matching and outreach" },
+  product_mismatch: { label: "Other product", tone: "warn", hint: "The supplier's own site names another product, not this one" },
+  name_from_domain: { label: "Name from website", tone: "info", hint: "The company name was read from its website address" },
+};
+
+const TONE_STYLE: Record<string, string> = {
+  warn: "bg-[#f5a623]/10 text-[#f5a623] border-[#f5a623]/25",
+  bad: "bg-[#ff5d6c]/10 text-[#ff5d6c] border-[#ff5d6c]/25",
+  good: "bg-[#2ec28a]/10 text-[#2ec28a] border-[#2ec28a]/25",
+  info: "bg-secondary text-muted-foreground border-border",
+};
+
+function FlagChips({ flags, skip = [] }: { flags?: string[]; skip?: string[] }) {
+  const shown = (flags ?? []).filter((f) => !skip.includes(f));
+  if (shown.length === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {shown.map((f) => {
+        const info = FLAG_INFO[f] ?? { label: f.replace(/_/g, " "), tone: "info" as const, hint: f };
+        return (
+          <span key={f} title={info.hint} className={cn("text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0", TONE_STYLE[info.tone])}>
+            {info.label}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+const BUYER_BASIS: Record<string, string> = {
+  buyer_quote: "a buyer's own price",
+  price_book: "the PortLess price book",
+  india_to_market: "what the market pays for India's goods (Comtrade)",
+  market_average: "the market's all-origin average (Comtrade)",
+};
+const SUPPLIER_BASIS: Record<string, string> = {
+  supplier_quote: "supplier prices",
+  price_book: "the PortLess price book",
+  mandi: "Agmarknet mandi prices + export mark-up",
+  india_export_average: "India's average export price (every grade)",
+};
+
+function fmtUsd0(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+}
+
+function priceTag(estimated: boolean) {
+  return (
+    <span
+      className={cn("text-[9px] px-1 py-0.5 rounded border ml-1", estimated ? TONE_STYLE.info : TONE_STYLE.good)}
+      title={estimated ? "At least one price is an estimate, not a quote" : "Both prices come from the counterparties"}
+    >
+      {estimated ? "estimate" : "quoted"}
+    </span>
+  );
+}
+
+// ── Detail panels ───────────────────────────────────────────────────────────
+
+/** From buyer price to expected profit, line by line, each with its basis. */
+function ProfitPanel({ opp }: { opp: Opportunity }) {
+  const p = opp.profit;
+  if (!p) return null;
+  const row = (label: string, value: string, sub?: string | null, strong?: boolean, color?: string) => (
+    <div className={cn("flex items-baseline justify-between gap-3 py-1", strong && "border-t border-border mt-1 pt-1.5")}>
+      <div className="min-w-0">
+        <span className={cn("text-xs", strong ? "font-semibold" : "text-muted-foreground")}>{label}</span>
+        {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
+      </div>
+      <span className={cn("text-xs tabular-nums shrink-0", strong && "font-bold text-sm")} style={{ color }}>{value}</span>
+    </div>
+  );
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2.5" data-testid="profit-panel">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <span className="text-xs font-semibold">Expected profit</span>
+        {priceTag(p.estimated)}
+        <span className="text-[10px] text-muted-foreground">per MT, lot of {p.lot_mt} MT ({p.lot_basis})</span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
+        <div>
+          {row("Buyer price (CIF)", p.buyer_price_usd_per_mt != null ? `${fmtUsd0(p.buyer_price_usd_per_mt)}/MT` : "—",
+            p.buyer_price_basis ? `from ${BUYER_BASIS[p.buyer_price_basis] ?? p.buyer_price_basis}` : null)}
+          {row("Supplier price (FOB India)", p.supplier_price_usd_per_mt != null ? `− ${fmtUsd0(p.supplier_price_usd_per_mt)}/MT` : "—",
+            p.supplier_price_note ?? (p.supplier_price_basis ? `from ${SUPPLIER_BASIS[p.supplier_price_basis] ?? p.supplier_price_basis}` : null))}
+          {row("Freight, inspection, insurance, escrow fee",
+            p.landed_cost_usd_per_mt != null && p.supplier_price_usd_per_mt != null
+              ? `− ${fmtUsd0(p.landed_cost_usd_per_mt - p.supplier_price_usd_per_mt)}/MT` : "—",
+            p.freight_usd_per_mt != null ? `sea freight ${fmtUsd0(p.freight_usd_per_mt)}/MT (estimate until a freight quote)` : null)}
+          {row("Margin", p.margin_usd_per_mt != null ? `${fmtUsd0(p.margin_usd_per_mt)}/MT · ${fmtPct(p.margin_pct)}` : "—",
+            p.margin_floor_pct != null ? `margin floor ${p.margin_floor_pct.toFixed(0)}%` : null, true,
+            p.margin_usd_per_mt == null ? undefined : p.margin_usd_per_mt > 0 ? (p.meets_floor ? "#2ec28a" : "#f5a623") : "#ff5d6c")}
+        </div>
+        <div>
+          {row(`Per container (${p.container_mt} MT)`, fmtUsd0(p.margin_per_container_usd))}
+          {row(`Per lot (${p.lot_mt} MT)`, p.margin_usd_per_mt != null ? fmtUsd0(p.margin_usd_per_mt * p.lot_mt) : "—")}
+          {row("Chance of closing", p.p_close != null ? `${(p.p_close * 100).toFixed(0)}%` : "—", p.p_close_basis.join(" · "))}
+          {row("Expected profit", fmtUsd0(p.expected_profit_usd), "margin × lot × chance of closing", true,
+            p.expected_profit_usd == null ? undefined : p.expected_profit_usd > 0 ? "#2ec28a" : "#ff5d6c")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** What the market pays, what India gets, trend and the competing origins. */
+function CorridorFacts({ opp }: { opp: Opportunity }) {
+  const has = opp.market_avg_usd_per_mt != null || opp.india_to_market_usd_per_mt != null || (opp.competitors ?? []).length > 0;
+  if (!has) return null;
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2.5 space-y-1.5">
+      <span className="text-xs font-semibold">Market</span>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+        <span>Pays for India's goods: <span className="text-foreground font-medium">{fmtUsd0(opp.india_to_market_usd_per_mt)}/MT</span></span>
+        <span>All-origin average: <span className="text-foreground font-medium">{fmtUsd0(opp.market_avg_usd_per_mt)}/MT</span></span>
+        <span>India's export average (FOB): <span className="text-foreground font-medium">{fmtUsd0(opp.india_world_fob_usd_per_mt)}/MT</span></span>
+        {opp.import_value_usd != null && <span>Imports: <span className="text-foreground font-medium">{fmtUsd0(opp.import_value_usd)}/yr</span></span>}
+        {opp.import_growth_pct != null && (
+          <span>YoY: <span className={cn("font-medium", opp.import_growth_pct >= 0 ? "text-[#2ec28a]" : "text-[#ff5d6c]")}>
+            {opp.import_growth_pct >= 0 ? "+" : ""}{opp.import_growth_pct.toFixed(1)}%</span></span>
+        )}
+        {opp.india_share_pct != null && <span>India's share: <span className="text-foreground font-medium">{opp.india_share_pct.toFixed(1)}%</span></span>}
+        {opp.freight_pct != null && <span>Freight ≈ <span className="text-foreground font-medium">{opp.freight_pct.toFixed(1)}%</span> of price</span>}
+      </div>
+      {(opp.competitors ?? []).length > 0 && (
+        <div className="text-[11px] text-muted-foreground">
+          Competing origins:{" "}
+          {(opp.competitors ?? []).map((c, i) => (
+            <span key={c.country}>
+              {i > 0 && " · "}
+              <span className="text-foreground">{c.country}</span>
+              {c.share_pct != null && ` ${c.share_pct.toFixed(0)}%`}
+              {c.unit_value_usd_per_mt != null && ` at ${fmtUsd0(c.unit_value_usd_per_mt)}/MT`}
+            </span>
+          ))}
+          {opp.india_price_advantage_pct != null && (
+            <span className={cn("ml-2 font-medium", opp.india_price_advantage_pct > 0 ? "text-[#2ec28a]" : "text-[#f5a623]")}>
+              India {opp.india_price_advantage_pct > 0 ? `${opp.india_price_advantage_pct.toFixed(0)}% cheaper` : `${Math.abs(opp.india_price_advantage_pct).toFixed(0)}% dearer`} than the leader
+            </span>
+          )}
+        </div>
+      )}
+      {opp.gap_note && (
+        <p className="text-[11px] text-[#f5a623] flex items-start gap-1">
+          <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" /> {opp.gap_note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Scan dialog + report ────────────────────────────────────────────────────
+
+function ScanDialog({ open, onClose, onScan, pending }: {
+  open: boolean;
+  onClose: () => void;
+  onScan: (opts: { hs_codes?: string[]; target_markets?: string[]; product_names?: Record<string, string> }) => void;
+  pending: boolean;
+}) {
+  const { data: cat } = useCatalogue();
+  const products = (cat?.products ?? []).filter((p) => p.active);
+  const productCodes = products.length ? products.map((p) => p.hs_code) : cat?.defaults.hs_codes ?? [];
+  const marketOptions = Array.from(new Set([...(products.flatMap((p) => p.markets)), ...(cat?.defaults.markets ?? [])])).sort();
+  const [hs, setHs] = useState<string[]>([]);
+  const [markets, setMarkets] = useState<string[]>([]);
+  const [extra, setExtra] = useState("");
+  const toggle = (list: string[], v: string, set: (x: string[]) => void) =>
+    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  const extraMarkets = extra.split(/[,\s]+/).map((m) => m.trim().toUpperCase()).filter((m) => /^[A-Z]{2}$/.test(m));
+  const allMarkets = Array.from(new Set([...markets, ...extraMarkets]));
+  const names: Record<string, string> = {};
+  for (const p of products) if (hs.includes(p.hs_code)) names[p.hs_code] = p.name;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Scan for opportunities</DialogTitle>
+          <DialogDescription>
+            Pick products and markets, or leave both empty to scan every catalogue product in its own markets.
+            Each product × market costs Apify runs.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-semibold mb-1.5">Products</p>
+            <div className="flex flex-wrap gap-1.5">
+              {productCodes.map((code) => {
+                const p = products.find((x) => x.hs_code === code);
+                return (
+                  <button key={code} type="button" onClick={() => toggle(hs, code, setHs)}
+                    className={cn("text-xs px-2 py-1 rounded-md border", hs.includes(code) ? "bg-primary/15 text-primary border-primary/30" : "border-border text-muted-foreground hover:bg-secondary")}>
+                    {p ? `${p.name} · ` : ""}<span className="font-mono">{code}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold mb-1.5">Markets</p>
+            <div className="flex flex-wrap gap-1.5">
+              {marketOptions.map((m) => (
+                <button key={m} type="button" onClick={() => toggle(markets, m, setMarkets)}
+                  className={cn("text-xs px-2 py-1 rounded-md border font-mono", markets.includes(m) ? "bg-primary/15 text-primary border-primary/30" : "border-border text-muted-foreground hover:bg-secondary")}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <Input className="mt-2 h-8 text-xs" placeholder="More markets, ISO-2 (e.g. NL, SA, JP)" value={extra} onChange={(e) => setExtra(e.target.value)} />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {hs.length || allMarkets.length
+              ? `${hs.length || "catalogue"} product(s) × ${allMarkets.length || "their"} market(s)`
+              : "Whole catalogue"}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={pending} onClick={() => onScan({
+            hs_codes: hs.length ? hs : undefined,
+            target_markets: allMarkets.length ? allMarkets : undefined,
+            product_names: Object.keys(names).length ? names : undefined,
+          })}>
+            <Zap className="w-3.5 h-3.5 mr-1" /> Scan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ScanReportCard() {
+  const { data: report } = useScanReport();
+  const [open, setOpen] = useState(false);
+  if (!report) return null;
+  const dropped = report.corridors.filter((c) => c.result !== "opportunity");
+  return (
+    <div className="rounded-xl border border-border bg-popover px-4 py-2.5" data-testid="scan-report">
+      <button type="button" className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((o) => !o)}>
+        {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        <span className="text-xs font-semibold">Last scan</span>
+        <span className="text-[11px] text-muted-foreground">
+          {timeAgo(report.finished_at ?? report.started_at)} · {report.corridors.length} product × market ·{" "}
+          <span className="text-[#2ec28a]">{report.opportunities} opportunit{report.opportunities === 1 ? "y" : "ies"}</span> ·{" "}
+          <span>{report.dropped} dropped</span>
+          {report.errors > 0 && <span className="text-[#ff5d6c]"> · {report.errors} failed</span>}
+        </span>
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1">
+          {report.corridors.map((c) => (
+            <li key={`${c.hs_code}-${c.market}`} className="text-[11px] flex items-start gap-2">
+              <span className={cn("w-2 h-2 rounded-full mt-1 shrink-0", c.result === "opportunity" ? "bg-[#2ec28a]" : c.result === "error" ? "bg-[#ff5d6c]" : "bg-muted-foreground/50")} />
+              <span className="font-mono shrink-0">{c.hs_code} → {c.market}</span>
+              <span className="text-muted-foreground">{c.reason}</span>
+            </li>
+          ))}
+          {dropped.length === 0 && <li className="text-[11px] text-muted-foreground">Nothing was dropped.</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
+
+type SortBy = "profit" | "container" | "score" | "market";
+
+const SORTS: { key: SortBy; label: string }[] = [
+  { key: "profit", label: "Expected profit" },
+  { key: "container", label: "Margin / container" },
+  { key: "score", label: "Market score" },
+  { key: "market", label: "Market" },
+];
+
+function sortValue(o: Opportunity, by: SortBy): number {
+  if (by === "profit") return o.profit?.expected_profit_usd ?? Number.NEGATIVE_INFINITY;
+  if (by === "container") return o.profit?.margin_per_container_usd ?? Number.NEGATIVE_INFINITY;
+  return o.arbitrage_rank;
+}
+
+function counts(opp: Opportunity, role: "buyers" | "suppliers") {
+  const c = opp.counterparty_counts?.[role];
+  if (!c) return null;
+  return c;
+}
 
 export function OpportunityRadar() {
+  const { user } = useAuth();
   const [view, setView] = useState<CounterpartyView>(getCounterpartyView);
   const { data, isLoading, isError, refetch } = useOpportunities(view);
   const { data: sourcesInfo } = useTradeSources();
   const scan = useScanOpportunities();
   const createDeal = useCreateDeal();
   const rescore = useRescoreOpportunity();
-  const [sortBy, setSortBy] = useState<"rank" | "market">("rank");
+  const [sortBy, setSortBy] = useState<SortBy>("profit");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [fProduct, setFProduct] = useState("");
+  const [fMarket, setFMarket] = useState("");
+  const [fMinMargin, setFMinMargin] = useState("");
+  const [fViable, setFViable] = useState(false);
+  const [fHideRunning, setFHideRunning] = useState(false);
 
-  const opportunities = [...(data ?? [])].sort((a, b) => {
-    if (sortBy === "rank") return b.arbitrage_rank - a.arbitrage_rank;
-    return a.market.localeCompare(b.market);
-  });
+  const all = data ?? [];
+  const productOptions = Array.from(new Set(all.map((o) => o.hs_code))).sort();
+  const marketOptions = Array.from(new Set(all.map((o) => o.market))).sort();
+  const minMargin = fMinMargin.trim() === "" ? null : Number(fMinMargin);
+
+  const opportunities = all
+    .filter((o) => !fProduct || o.hs_code === fProduct)
+    .filter((o) => !fMarket || o.market === fMarket)
+    .filter((o) => minMargin == null || Number.isNaN(minMargin) || (o.profit?.margin_pct ?? Number.NEGATIVE_INFINITY) >= minMargin)
+    .filter((o) => !fViable || o.tariff_viable !== false)
+    .filter((o) => !fHideRunning || (o.corridor_deals ?? []).length === 0)
+    .sort((a, b) => (sortBy === "market" ? a.market.localeCompare(b.market) : sortValue(b, sortBy) - sortValue(a, sortBy)));
   const { data: sourcing } = useOpportunitySourcing(opportunities.map((o) => o.opportunity_id));
 
-  const topHs = opportunities[0]?.hs_code ?? "—";
-  const avgRank =
-    opportunities.length > 0
-      ? (opportunities.reduce((s, o) => s + o.arbitrage_rank, 0) / opportunities.length).toFixed(1)
-      : "—";
+  const totalExpected = opportunities.reduce((s, o) => s + Math.max(0, o.profit?.expected_profit_usd ?? 0), 0);
+  const bestContainer = opportunities.reduce<Opportunity | null>(
+    (best, o) => ((o.profit?.margin_per_container_usd ?? Number.NEGATIVE_INFINITY) > (best?.profit?.margin_per_container_usd ?? Number.NEGATIVE_INFINITY) ? o : best),
+    null,
+  );
+  const needCheck = opportunities.filter((o) => (o.flags ?? []).some((f) => f === "price_check_needed" || f === "tariff_unverified")).length;
 
-  async function handleScan() {
+  async function handleScan(opts: Parameters<typeof scan.mutateAsync>[0]) {
+    setScanOpen(false);
     try {
-      await scan.mutateAsync();
-      toast.success("Scan complete", { description: "Opportunity list updated" });
+      const found = await scan.mutateAsync(opts);
+      toast.success("Scan complete", { description: `${found.length} opportunit${found.length === 1 ? "y" : "ies"} found · see "Last scan" for what was dropped and why` });
     } catch {
-      toast.error("Scan failed", { description: "Check API connectivity" });
+      toast.error("Scan failed", { description: "Check API connectivity. What was found so far is kept." });
     }
   }
 
@@ -574,12 +892,20 @@ export function OpportunityRadar() {
   }
 
   async function handleStartDeal(opp: Opportunity) {
+    const running = opp.corridor_deals ?? [];
+    if (running.length > 0) {
+      const ok = window.confirm(
+        `${running.length} deal(s) already running for HS ${opp.hs_code} → ${opp.market} (${running.map((d) => `${d.deal_id} ${d.status}`).join(", ")}). ` +
+          "Starting another prospect writes to the same buyers again. Start anyway?",
+      );
+      if (!ok) return;
+    }
     // Rescore first so the deal starts from the checked, better-scored pair
     // (the backend skips its own rescore when this one ran in the last hour).
     await runRescore(opp);
     try {
       const deal = await createDeal.mutateAsync({
-        operator_id: "OP-901",
+        operator_id: user?.user_id ?? "unknown-operator",
         hs_code: opp.hs_code,
         market: opp.market,
         opportunity_id: opp.opportunity_id,
@@ -592,87 +918,65 @@ export function OpportunityRadar() {
     }
   }
 
+  const chip = (active: boolean) =>
+    cn("text-xs px-3 py-1 rounded-md border transition-colors",
+      active ? "bg-primary/15 text-primary border-primary/30" : "border-border text-muted-foreground hover:bg-secondary");
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-lg font-bold">Opportunity Radar</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
+            Ranked by expected profit: buyer price − supplier price − freight, inspection, insurance and escrow fee, × lot × chance of closing.{" "}
             {sourcesInfo
               ? `${sourcesInfo.live_count} of ${sourcesInfo.total} data sources reachable · ` +
                 (sourcesInfo.apify.token_present
-                  ? `Apify actors connected as ${sourcesInfo.apify.owner}` +
-                    (sourcesInfo.apify.ai_tier ? " (AI tier)" : " (rule tier)")
+                  ? `Apify actors connected as ${sourcesInfo.apify.owner}`
                   : "APIFY_TOKEN not set — buyer/seller identification actors are skipped")
-              : "Live arbitrage signals from Comtrade, US Census, World Bank WITS and the PortLess Apify actors"}
+              : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 text-xs"
-            onClick={() => refetch()}
-          >
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => refetch()}>
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </Button>
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 text-xs"
-            onClick={handleScan}
-            disabled={scan.isPending}
-          >
+          <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setScanOpen(true)} disabled={scan.isPending}>
             {scan.isPending ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Scanning…
-              </>
+              <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Scanning…</>
             ) : (
-              <>
-                <Zap className="w-3.5 h-3.5" /> Scan New
-              </>
+              <><Zap className="w-3.5 h-3.5" /> Scan…</>
             )}
           </Button>
         </div>
       </div>
+      <ScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onScan={handleScan} pending={scan.isPending} />
 
       {/* Summary stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
+          { label: "Opportunities", value: String(opportunities.length), sub: all.length !== opportunities.length ? `of ${all.length}` : "open now", icon: Zap, color: "#4f8cff" },
+          { label: "Expected profit (sum)", value: fmtUsd0(totalExpected), sub: "margin × lot × chance", icon: TrendingUp, color: "#2ec28a" },
           {
-            label: "Total Opportunities",
-            value: data?.length ?? 0,
-            icon: Zap,
-            color: "#4f8cff",
+            label: "Best margin / container",
+            value: fmtUsd0(bestContainer?.profit?.margin_per_container_usd),
+            sub: bestContainer ? `HS ${bestContainer.hs_code} → ${bestContainer.market}` : "—",
+            icon: BarChart2, color: "#28c2a0",
           },
-          {
-            label: "Top HS Code",
-            value: topHs,
-            icon: TrendingUp,
-            color: "#28c2a0",
-          },
-          {
-            label: "Avg Arbitrage Rank",
-            value: avgRank,
-            icon: BarChart2,
-            color: "#f5a623",
-          },
+          { label: "Need a price check", value: String(needCheck), sub: "implausible gap or unverified duty", icon: AlertTriangle, color: "#f5a623" },
         ].map((s) => {
           const Icon = s.icon;
           return (
             <Card key={s.label}>
               <CardContent className="flex items-center gap-3 pt-4">
-                <div
-                  className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
-                  style={{ background: `${s.color}1a` }}
-                >
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0" style={{ background: `${s.color}1a` }}>
                   <Icon className="w-5 h-5" style={{ color: s.color }} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] text-muted-foreground">{s.label}</p>
-                  <p className="text-xl font-bold" style={{ color: s.color }}>
-                    {s.value}
-                  </p>
+                  <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{s.sub}</p>
                 </div>
               </CardContent>
             </Card>
@@ -687,25 +991,16 @@ export function OpportunityRadar() {
         </div>
       )}
 
-      {/* Sort */}
-      <div className="flex items-center gap-2">
+      <ScanReportCard />
+
+      {/* Sort + filters */}
+      <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-muted-foreground">Sort:</span>
-        {(["rank", "market"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setSortBy(s)}
-            className={cn(
-              "text-xs px-3 py-1 rounded-md border transition-colors",
-              sortBy === s
-                ? "bg-primary/15 text-primary border-primary/30"
-                : "border-border text-muted-foreground hover:bg-secondary"
-            )}
-          >
-            {s === "rank" ? "Arbitrage Rank" : "Market"}
-          </button>
+        {SORTS.map((s) => (
+          <button key={s.key} onClick={() => setSortBy(s.key)} className={chip(sortBy === s.key)}>{s.label}</button>
         ))}
         <span
-          className="text-xs text-muted-foreground ml-4"
+          className="text-xs text-muted-foreground ml-3"
           title="Verified: sanctions screening clear, a deliverable e-mail and no GST / IEC red flag (checked at scan time for the top buyers and suppliers of each opportunity)"
         >
           Buyers &amp; suppliers:
@@ -713,211 +1008,194 @@ export function OpportunityRadar() {
         {(["verified", "all"] as const).map((v) => (
           <button
             key={v}
-            onClick={() => {
-              setView(v);
-              setCounterpartyView(v);
-            }}
-            className={cn(
-              "text-xs px-3 py-1 rounded-md border transition-colors",
-              view === v
-                ? "bg-primary/15 text-primary border-primary/30"
-                : "border-border text-muted-foreground hover:bg-secondary"
-            )}
+            onClick={() => { setView(v); setCounterpartyView(v); }}
+            className={chip(view === v)}
             data-testid={`radar-counterparties-${v}`}
           >
             {v === "verified" ? "Verified only" : "All"}
           </button>
         ))}
       </div>
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">Filter:</span>
+        <select className="h-7 rounded-md border border-border bg-background px-2 text-xs" value={fProduct} onChange={(e) => setFProduct(e.target.value)} aria-label="Product">
+          <option value="">All products</option>
+          {productOptions.map((h) => <option key={h} value={h}>HS {h}</option>)}
+        </select>
+        <select className="h-7 rounded-md border border-border bg-background px-2 text-xs" value={fMarket} onChange={(e) => setFMarket(e.target.value)} aria-label="Market">
+          <option value="">All markets</option>
+          {marketOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <Input className="h-7 w-32 text-xs" type="number" placeholder="Min margin %" value={fMinMargin} onChange={(e) => setFMinMargin(e.target.value)} />
+        <label className="flex items-center gap-1 cursor-pointer text-muted-foreground">
+          <input type="checkbox" checked={fViable} onChange={(e) => setFViable(e.target.checked)} /> Tariff viable
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer text-muted-foreground" title="Hide products × markets that already have a deal running">
+          <input type="checkbox" checked={fHideRunning} onChange={(e) => setFHideRunning(e.target.checked)} /> Hide running deals
+        </label>
+      </div>
 
-      {/* Opportunities grid */}
+      {/* Opportunities */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-44 rounded-xl" />
-          ))}
+          {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
         </div>
       ) : isError ? (
         <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
           <Zap className="w-8 h-8 opacity-30" />
           <p className="text-sm">Could not load opportunities</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            Retry
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
         </div>
-      ) : opportunities.length === 0 ? (
+      ) : all.length === 0 ? (
         <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground border border-dashed border-border rounded-xl">
           <Zap className="w-10 h-10 opacity-20" />
           <p className="text-sm">No opportunities detected yet</p>
-          <p className="text-xs text-center max-w-xs">
-            Run a scan to query Comtrade, US Census, and World Bank WITS for arbitrage signals
+          <p className="text-xs text-center max-w-sm">
+            A scan reads UN Comtrade demand and prices through the export-market actor, finds importers and
+            Indian suppliers by web search, checks duty on World Bank WITS and estimates the profit per product × market.
           </p>
-          <Button size="sm" onClick={handleScan} disabled={scan.isPending}>
+          <Button size="sm" onClick={() => setScanOpen(true)} disabled={scan.isPending}>
             <Zap className="w-3.5 h-3.5 mr-1.5" /> Run First Scan
           </Button>
         </div>
+      ) : opportunities.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-10 text-center">No opportunity matches these filters.</p>
       ) : (
-        <>
-          {/* Table view */}
-          {/* RFQ / price column: one request for every listed opportunity (refreshed every 30 s). */}
-          <div className="rounded-xl border border-border overflow-x-auto">
-            <table className="w-full min-w-[1040px]">
-              <thead>
-                <tr className="bg-popover border-b border-border">
-                  <th className="w-8 px-2 py-3" />
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    HS Code
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Market
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Source
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-48">
-                    Arbitrage Score
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Best Match
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Top Seller
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Buyer Signals
-                  </th>
-                  <th
-                    className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide"
-                    title="Supplier side of the deal made from this opportunity: RFQs sent, quotes and whether a supplier confirmed the order at its price"
-                  >
-                    RFQ / Price
-                  </th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {opportunities.map((opp, idx) => {
-                  const sellers = opp.seller_candidates ?? [];
-                  const topSeller = sellers.reduce<SellerCandidate | null>((best, s) => {
-                    if (s.estimated_fob_price_usd == null) return best;
-                    if (best == null || (best.estimated_fob_price_usd ?? Infinity) > s.estimated_fob_price_usd) {
-                      return s;
-                    }
-                    return best;
-                  }, null);
-                  const buyers = opp.buyer_signals ?? [];
-                  const isConverted = opp.status === "CONVERTED";
-                  const isExpanded = expandedId === opp.opportunity_id;
-
-                  return (
-                    <Fragment key={opp.opportunity_id}>
+        <div className="rounded-xl border border-border overflow-x-auto">
+          <table className="w-full min-w-[1180px]">
+            <thead>
+              <tr className="bg-popover border-b border-border">
+                <th className="w-8 px-2 py-3" />
+                {[
+                  ["Product", ""],
+                  ["Market", "Scanned / expires"],
+                  ["Expected profit", "Margin × lot × chance of closing"],
+                  ["Margin", "Per MT and per container, after freight, inspection, insurance and escrow fee"],
+                  ["Market pays · India supplier", "Buyer price vs supplier price per MT, each with its basis"],
+                  ["Trend", "Import growth YoY and India's share of the market"],
+                  ["Market score", "Demand × net price gap after duty and freight (0–100)"],
+                  ["Best match", "Best buyer ⇄ seller pair score"],
+                  ["Buyers · Sellers", "Verified / all"],
+                  ["RFQ / Price", "Supplier side of the deal made from this opportunity"],
+                ].map(([h, t]) => (
+                  <th key={h} title={t} className="text-left px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
+                ))}
+                <th className="px-3 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {opportunities.map((opp, idx) => {
+                const p = opp.profit;
+                const isConverted = opp.status === "CONVERTED";
+                const isExpanded = expandedId === opp.opportunity_id;
+                const running = opp.corridor_deals ?? [];
+                const bc = counts(opp, "buyers");
+                const sc = counts(opp, "suppliers");
+                const best = (opp.pair_matches ?? [])[0];
+                return (
+                  <Fragment key={opp.opportunity_id}>
                     <tr
-                      onClick={() =>
-                        setExpandedId(isExpanded ? null : opp.opportunity_id)
-                      }
-                      className={cn(
-                        "border-b border-border hover:bg-card transition-colors cursor-pointer",
-                        isExpanded ? "bg-card" : idx % 2 === 0 ? "bg-transparent" : "bg-secondary/30"
-                      )}
+                      onClick={() => setExpandedId(isExpanded ? null : opp.opportunity_id)}
+                      className={cn("border-b border-border hover:bg-card transition-colors cursor-pointer",
+                        isExpanded ? "bg-card" : idx % 2 === 0 ? "bg-transparent" : "bg-secondary/30")}
                     >
                       <td className="px-2 py-3 text-center align-middle">
-                        {isExpanded ? (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground inline" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-muted-foreground inline" />
-                        )}
+                        {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground inline" /> : <ChevronRight className="w-4 h-4 text-muted-foreground inline" />}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <HsCode code={opp.hs_code} className="font-mono font-bold text-sm" />
+                        <div className="mt-1"><FlagChips flags={opp.flags} skip={["no_supplier_price"]} /></div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <Globe className="w-3.5 h-3.5 text-muted-foreground" />
-                          {opp.market}
-                        </div>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-1.5 text-sm"><Globe className="w-3.5 h-3.5 text-muted-foreground" />{opp.market}</div>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {timeAgo(opp.scanned_at)}{opp.expires_at ? ` · expires ${countdown(opp.expires_at)}` : ""}
+                        </p>
                       </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="outline" className="text-[10px]">
-                          {(opp.source ?? "trade-min").replace("apify_", "⚡ ")}
-                        </Badge>
+                      <td className="px-3 py-3">
+                        <p className={cn("text-sm font-bold tabular-nums", (p?.expected_profit_usd ?? 0) > 0 ? "text-[#2ec28a]" : p?.expected_profit_usd != null ? "text-[#ff5d6c]" : "text-muted-foreground")}>
+                          {fmtUsd0(p?.expected_profit_usd)}
+                        </p>
+                        {p?.p_close != null && <p className="text-[10px] text-muted-foreground">{(p.p_close * 100).toFixed(0)}% chance · {p.lot_mt} MT</p>}
                       </td>
-                      <td className="px-4 py-3">
-                        <ArbitrageBar rank={opp.arbitrage_rank} />
-                      </td>
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const best = (opp.pair_matches ?? [])[0];
-                          if (!best) return <span className="text-xs text-muted-foreground">—</span>;
-                          return (
-                            <div className="text-xs" title={`${best.buyer_name} ⇄ ${best.seller_name}`}>
-                              <span className="font-bold tabular-nums mr-1.5">{best.score.toFixed(0)}</span>
-                              <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", GRADE_STYLE[best.grade])}>
-                                {best.grade}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-3">
-                        {topSeller ? (
-                          <div className="text-xs">
-                            <p className="font-medium truncate max-w-[160px]">{topSeller.company_name}</p>
-                            <p className="text-muted-foreground">
-                              {topSeller.estimated_fob_price_usd != null
-                                ? `$${topSeller.estimated_fob_price_usd.toFixed(2)} FOB`
-                                : "—"}
-                              {sellers.length > 1 ? ` · +${sellers.length - 1} more` : ""}
+                      <td className="px-3 py-3 text-xs">
+                        {p?.margin_usd_per_mt != null ? (
+                          <>
+                            <p className="font-semibold tabular-nums">
+                              {fmtUsd0(p.margin_usd_per_mt)}/MT
+                              <span className="text-muted-foreground font-normal"> · {fmtPct(p.margin_pct)}</span>
                             </p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No sellers found</span>
-                        )}
+                            <p className="text-[10px] text-muted-foreground">{fmtUsd0(p.margin_per_container_usd)} / container{priceTag(p.estimated)}</p>
+                          </>
+                        ) : <span className="text-muted-foreground">needs both prices</span>}
                       </td>
-                      <td className="px-4 py-3">
-                        {buyers.length > 0 ? (
-                          <div className="text-xs">
-                            <p className="font-medium">{buyers[0].buyer_name}</p>
-                            <p className="text-muted-foreground">
-                              {buyers[0].buyer_country}
-                              {buyers.length > 1 ? ` · +${buyers.length - 1} more` : ""}
-                            </p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No buyer signals</span>
-                        )}
+                      <td className="px-3 py-3 text-xs">
+                        <p className="tabular-nums" title={p?.buyer_price_basis ? BUYER_BASIS[p.buyer_price_basis] : undefined}>
+                          {fmtUsd0(p?.buyer_price_usd_per_mt ?? opp.price_benchmark_usd_per_mt)}
+                          <span className="text-muted-foreground"> · </span>
+                          <span title={p?.supplier_price_note ?? (p?.supplier_price_basis ? SUPPLIER_BASIS[p.supplier_price_basis] : undefined)}>
+                            {fmtUsd0(p?.supplier_price_usd_per_mt)}
+                          </span>
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[170px]">
+                          {p?.supplier_price_basis ? `supplier: ${p.supplier_price_basis.replace(/_/g, " ")}` : "no supplier price"}
+                        </p>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 text-xs">
+                        {opp.import_growth_pct != null ? (
+                          <p className={cn("font-medium", opp.import_growth_pct >= 0 ? "text-[#2ec28a]" : "text-[#ff5d6c]")}>
+                            {opp.import_growth_pct >= 0 ? "+" : ""}{opp.import_growth_pct.toFixed(0)}% YoY
+                          </p>
+                        ) : <p className="text-muted-foreground">—</p>}
+                        {opp.india_share_pct != null && <p className="text-[10px] text-muted-foreground">India {opp.india_share_pct.toFixed(0)}% share</p>}
+                      </td>
+                      <td className="px-3 py-3 w-36">
+                        <ScoreBar score={opp.arbitrage_rank} />
+                        {opp.confidence_score != null && <p className="text-[10px] text-muted-foreground mt-0.5">data confidence {opp.confidence_score.toFixed(0)}%</p>}
+                      </td>
+                      <td className="px-3 py-3">
+                        {best ? (
+                          <div className="text-xs" title={`${best.buyer_name} ⇄ ${best.seller_name}`}>
+                            <span className="font-bold tabular-nums mr-1.5">{best.score.toFixed(0)}</span>
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", GRADE_STYLE[best.grade])}>{best.grade}</span>
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-xs">
+                        <p title="Buyers: verified / all">
+                          <Users className="w-3 h-3 inline mr-1 text-[#4f8cff]" />
+                          {bc ? `${bc.verified ?? 0}/${(bc.verified ?? 0) + (bc.unverified ?? 0) + (bc.failed ?? 0)}` : (opp.buyer_signals ?? []).length}
+                        </p>
+                        <p title="Sellers: verified / all">
+                          <Factory className="w-3 h-3 inline mr-1 text-[#28c2a0]" />
+                          {sc ? `${sc.verified ?? 0}/${(sc.verified ?? 0) + (sc.unverified ?? 0) + (sc.failed ?? 0)}` : (opp.seller_candidates ?? []).length}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3">
                         <SourcingStatusBadge status={sourcing?.[opp.opportunity_id]} />
                       </td>
-                      <td className="px-4 py-3">
-                        {isConverted ? (
-                          <Badge variant="outline" className="text-[10px] gap-1">
-                            Deal Started
+                      <td className="px-3 py-3">
+                        {running.length > 0 && (
+                          <Badge variant="warning" className="text-[9px] mb-1" title={running.map((d) => `${d.deal_id} · ${d.status}`).join("\n")}>
+                            {running.length} deal{running.length > 1 ? "s" : ""} running
                           </Badge>
+                        )}
+                        {isConverted ? (
+                          <Badge variant="outline" className="text-[10px] gap-1">Deal Started</Badge>
                         ) : (
                           <div className="flex items-center gap-1.5">
                             <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1"
+                              size="sm" variant="outline" className="h-7 text-xs gap-1"
                               title="Fill what can be filled without contacting anyone (counterparty check, supplier address / GSTIN, port distance, estimated supplier price) and score the best pairs again"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedId(opp.opportunity_id);
-                                runRescore(opp);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); setExpandedId(opp.opportunity_id); runRescore(opp); }}
                               disabled={rescore.isPending}
                             >
                               <RefreshCw className={cn("w-3 h-3", rescore.isPending && "animate-spin")} /> Rescore
                             </Button>
                             <Button
-                              size="sm"
-                              className="h-7 text-xs gap-1"
+                              size="sm" className="h-7 text-xs gap-1"
                               title="Rescores the best pairs first, then starts the prospect"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStartDeal(opp);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); handleStartDeal(opp); }}
                               disabled={createDeal.isPending || rescore.isPending}
                             >
                               <ArrowUpRight className="w-3 h-3" /> Start prospect
@@ -928,18 +1206,17 @@ export function OpportunityRadar() {
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-border">
-                        <td colSpan={10} className="p-0">
+                        <td colSpan={12} className="p-0">
                           <OpportunityDetail opp={opp} />
                         </td>
                       </tr>
                     )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
