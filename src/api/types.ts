@@ -739,6 +739,8 @@ export interface Opportunity {
   tariff_data?: TariffData | null;
   tariff_viable?: boolean | null;
   confidence_score?: number | null;
+  /** One line per part of the confidence score (sources, live demand, tariff, suppliers, verified counterparties). */
+  confidence_basis?: string[];
   expires_at?: string | null;
   // What the destination market actually pays per MT (UN Comtrade unit value
   // via the export-market actor) — the real buyer price anchor.

@@ -100,9 +100,9 @@ function fitChip(score: number | null | undefined) {
   );
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" }) {
+function Metric({ label, value, tone, hint }: { label: string; value: string; tone?: "good" | "warn" | "bad"; hint?: string }) {
   return (
-    <div className="rounded-lg bg-secondary/50 border border-border px-3 py-2">
+    <div className="rounded-lg bg-secondary/50 border border-border px-3 py-2" title={hint}>
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
       <p
         className={cn(
@@ -156,6 +156,7 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
         <Metric
           label="Confidence"
           value={opp.confidence_score != null ? `${opp.confidence_score.toFixed(0)}%` : "—"}
+          hint={opp.confidence_basis?.length ? `Points: ${opp.confidence_basis.join(" · ")}` : undefined}
         />
         <Metric label="Urgency Tier" value={opp.urgency_tier != null ? `T${opp.urgency_tier}` : "—"} />
         <Metric label="Active RFQs" value={opp.active_rfq_count != null ? String(opp.active_rfq_count) : "—"} />
@@ -1330,7 +1331,7 @@ export function OpportunityRadar() {
                       </td>
                       <td className="px-3 py-3 w-36">
                         <ScoreBar score={opp.arbitrage_rank} />
-                        {opp.confidence_score != null && <p className="text-[10px] text-muted-foreground mt-0.5">data confidence {opp.confidence_score.toFixed(0)}%</p>}
+                        {opp.confidence_score != null && <p className="text-[10px] text-muted-foreground mt-0.5" title={opp.confidence_basis?.length ? `Points: ${opp.confidence_basis.join(" · ")}` : undefined}>data confidence {opp.confidence_score.toFixed(0)}%</p>}
                       </td>
                       <td className="px-3 py-3">
                         {best ? (
