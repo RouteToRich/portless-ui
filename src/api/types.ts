@@ -270,6 +270,15 @@ export interface PairScore {
   expected_value_usd: number;
   firm: boolean;
   next_step: string;
+  max_supplier_fob_usd_per_mt?: number | null;
+  target_supplier_fob_usd_per_mt?: number | null;
+  min_buyer_price_usd_per_mt?: number | null;
+  target_buyer_price_usd_per_mt?: number | null;
+  supplier_cut_needed_usd_per_mt?: number | null;
+  incentive_usd_per_mt?: number | null;
+  freight_basis?: string | null;
+  quote_age_days?: number | null;
+  quote_expires_in_days?: number | null;
 }
 
 export interface MatchBoard {
@@ -285,7 +294,7 @@ export interface MatchBoard {
   offers: SupplierOffer[];
   pairs: PairScore[];
   min_probability: number;
-  assumptions: Record<string, number | null>;
+  assumptions: Record<string, number | string | null>;
   next_actions: string[];
   learning?: {
     calibration_active: boolean;
@@ -293,6 +302,57 @@ export interface MatchBoard {
     calibration_error?: number | null;
     offer_pricing?: { responses: number; acceptance_rate?: number | null; price_nudge: number };
   };
+  expired_offers?: { supplier_id: string; company_name?: string; fob_price_usd_per_mt?: number | null; received_at?: string | null }[];
+  best_quote_usd_per_mt?: number | null;
+  quote_spread_pct?: number | null;
+  target_margin_pct?: number | null;
+}
+
+// GET /deals/prospects/desk — every open prospect the way a trader works them.
+export interface DeskAction {
+  kind: "confirm" | "send_offer" | "push_supplier" | "push_buyer" | "best_and_final" | "reconfirm_quote"
+    | "contact_buyers" | "chase_quotes" | "fix_mailbox" | "wait" | "park" | "drop";
+  text: string;
+  owner: string;
+}
+
+export interface ProspectSummary {
+  deal_id: string;
+  hs_code: string;
+  market?: string | null;
+  status: string;
+  created_at?: string | null;
+  age_days?: number | null;
+  last_activity_at?: string | null;
+  idle_days?: number | null;
+  stalled: boolean;
+  waiting_on: "us" | "buyers" | "buyer" | "suppliers";
+  waiting_detail: string;
+  buyers_total: number;
+  buyers_contacted: number;
+  buyers_interested: number;
+  buyers_declined: number;
+  quotes: number;
+  best_quote_usd_per_mt?: number | null;
+  quote_spread_pct?: number | null;
+  quotes_expiring: number;
+  quotes_expired: number;
+  undelivered: number;
+  best_buyer?: string | null;
+  best_supplier?: string | null;
+  margin_usd_per_mt?: number | null;
+  margin_pct?: number | null;
+  probability?: number | null;
+  expected_value_usd?: number | null;
+  firm: boolean;
+  quantity_mt?: number | null;
+  max_supplier_fob_usd_per_mt?: number | null;
+  min_buyer_price_usd_per_mt?: number | null;
+  supplier_cut_needed_usd_per_mt?: number | null;
+  radar_expected_profit_usd?: number | null;
+  radar_margin_usd_per_mt?: number | null;
+  priority: number;
+  actions: DeskAction[];
 }
 
 // Sourcing — services/sourcing/schemas.py
@@ -837,7 +897,98 @@ export interface Counterparty {
   first_seen_at: string;
   last_seen_at: string;
   validation?: CounterpartyValidation | null;
+  /** Data-quality flags from the scans: role_suspect, product_mismatch, name_from_domain. */
+  flags?: string[];
+  /** Never written to again (replied "not interested", or set by staff). */
+  do_not_contact?: boolean;
+  dnc_reason?: string | null;
+  dnc_at?: string | null;
+  /** Where PortLess stands with the company across every prospect and deal. */
+  relationship?: CounterpartyRelationship | null;
+  /** 0–100: who to work with first. */
+  score?: number | null;
+  score_basis?: string[];
 }
+
+export type RelationshipStage =
+  | "new" | "contacted" | "replied" | "interested" | "quoted" | "in_deal" | "traded" | "declined" | "do_not_contact";
+
+export interface CounterpartyRelationship {
+  stage: RelationshipStage;
+  prospects: number;
+  deals_active: number;
+  deals_won: number;
+  contacted?: number;
+  replied?: number;
+  reply_rate?: number | null;
+  interested?: number;
+  declined?: number;
+  quotes?: number;
+  last_contact_at?: string | null;
+  last_reply_at?: string | null;
+  last_quote_usd_per_mt?: number | null;
+  last_quote_at?: string | null;
+  target_price_usd_per_mt?: number | null;
+  requirement?: string | null;
+  quote_vs_median_pct?: number | null;
+}
+
+// GET /trade-min/{buyers|suppliers}/{id}/profile — one company, everything needed to act on it.
+export interface CounterpartyEngagement {
+  deal_id: string;
+  hs_code: string;
+  market?: string | null;
+  deal_status: string;
+  prospect: boolean;
+  as: "candidate" | "quote" | "party";
+  status: string;
+  last_at?: string | null;
+  reply?: string | null;
+  target_price_usd_per_mt?: number | null;
+  offer?: string | null;
+  price_usd_per_mt?: number | null;
+  moq_mt?: number | null;
+  lead_time_days?: number | null;
+}
+
+export interface CounterpartyEvent {
+  at: string;
+  kind: string;
+  text: string;
+  deal_id?: string | null;
+}
+
+export interface CounterpartyAction {
+  kind: "blocked" | "open_deal" | "add_to_prospect" | "open_opportunity" | "check" | "find_contact" | "follow_up" | string;
+  label: string;
+  deal_id?: string;
+  opportunity_id?: string;
+}
+
+export interface CounterpartyProfile {
+  company: Counterparty;
+  engagements: CounterpartyEngagement[];
+  timeline: CounterpartyEvent[];
+  open_prospects: { deal_id: string; hs_code: string; market?: string | null; buyers: number; quotes: number; created_at?: string | null }[];
+  next_actions: CounterpartyAction[];
+  blocked_reason?: string | null;
+}
+
+// GET /trade-min/directory/summary — the book at a glance.
+export interface DirectoryRoleSummary {
+  total: number;
+  stages: Record<string, number>;
+  verified: number;
+  contactable: number;
+  do_not_contact: number;
+  new_this_week: number;
+  new_by_product: [string, number][];
+  new_by_country: [string, number][];
+  hot: { id: string; name: string; country?: string | null; stage?: string; at: string; score?: number | null }[];
+  top: { id: string; name: string; country?: string | null; score?: number | null; stage?: string }[];
+}
+
+export type DirectorySummary = Record<"buyer" | "supplier", DirectoryRoleSummary>;
 
 export interface TradeSource {
   name: string;

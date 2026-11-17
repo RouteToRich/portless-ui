@@ -50,6 +50,9 @@ import type {
   AuthUser,
   Opportunity,
   ScanReport,
+  ProspectSummary,
+  CounterpartyProfile,
+  DirectorySummary,
   Organization,
   QcRecord,
   ReadinessReport,
@@ -100,6 +103,8 @@ export const HealthApi = {
 // Prospect match board: buyer requirements × supplier offers, scored.
 export const MatchApi2 = {
   board: (dealId: string) => api.get<MatchBoard>(`/deals/${dealId}/match-board`).then((r) => r.data),
+  // Every open prospect: worth, whose move, next moves (shared/orchestration/prospect_desk.py).
+  desk: () => api.get<ProspectSummary[]>("/deals/prospects/desk", { timeout: 60_000 }).then((r) => r.data),
   evaluate: (dealId: string) => api.post(`/deals/${dealId}/match/evaluate`).then((r) => r.data),
   indicativeOffer: (dealId: string, candidateId: string, offerId: string) =>
     api.post<{ approval_id: string }>(`/deals/${dealId}/match/indicative-offer`, { candidate_id: candidateId, offer_id: offerId })
@@ -224,7 +229,7 @@ export const OpportunitiesApi = {
   // The HS code picker: codes matching a code prefix or product words, with names.
   hsSearch: (q: string) =>
     api
-      .get<{ results: { code: string; name: string | null; description: string | null }[] }>("/trade-min/hs-search", {
+      .get<{ results: { code: string; name: string | null; description: string | null; search_name?: string | null }[] }>("/trade-min/hs-search", {
         params: { q, limit: 20 },
       })
       .then((r) => r.data.results),
@@ -242,6 +247,11 @@ export interface CounterpartyFilters {
   limit?: number;
   /** Scan-time check result; omit for every record. */
   validation?: ValidationStatus;
+  /** Relationship stage (relationships.py). */
+  stage?: string;
+  /** Only companies outreach may write to. */
+  contactable?: boolean;
+  sort?: "recent" | "score";
 }
 
 // Every buyer / supplier a scan found — with or without an opportunity or deal.
@@ -255,6 +265,21 @@ export const CounterpartiesApi = {
   /** Run the sanctions / e-mail / GST-IEC check now for one directory record. */
   validate: (role: "buyer" | "supplier", id: string) =>
     api.post<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/validate`).then((r) => r.data),
+  /** Put a company on / take it off the do-not-contact list (staff; reason required to put on). */
+  setContactPreference: (role: "buyer" | "supplier", id: string, doNotContact: boolean, reason?: string) =>
+    api.put<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/contact-preference`,
+      { do_not_contact: doNotContact, reason }).then((r) => r.data),
+  /** One company: score, relationship, engagements, timeline, open prospects, next actions. */
+  profile: (role: "buyer" | "supplier", id: string) =>
+    api.get<CounterpartyProfile>(`/trade-min/${role}s/${encodeURIComponent(id)}/profile`).then((r) => r.data),
+  /** Buyer → the prospect's outreach funnel; supplier → its match board with the quote pending. */
+  addToProspect: (role: "buyer" | "supplier", id: string, dealId: string) =>
+    api.post<{ deal_id: string; added: string; next: string }>(
+      `/trade-min/${role}s/${encodeURIComponent(id)}/add-to-prospect`, { deal_id: dealId }).then((r) => r.data),
+  /** The book at a glance. */
+  summary: () => api.get<DirectorySummary>("/trade-min/directory/summary").then((r) => r.data),
+  /** Store the current clean-up (names, roles) on every directory record (staff). */
+  cleanDirectory: () => api.post<{ changed: number }>("/trade-min/directory/clean").then((r) => r.data),
 };
 
 export type OnTimeout = "APPROVE" | "REJECT";

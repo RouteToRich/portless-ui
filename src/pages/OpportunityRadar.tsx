@@ -539,6 +539,7 @@ const FLAG_INFO: Record<string, { label: string; tone: "warn" | "bad" | "good" |
   role_suspect: { label: "Looks like an Indian exporter", tone: "bad", hint: "Indian legal form, domain, phone or 'exporter from India' text: not an importer in the market. Kept out of matching and outreach" },
   product_mismatch: { label: "Other product", tone: "warn", hint: "The supplier's own site names another product, not this one" },
   name_from_domain: { label: "Name from website", tone: "info", hint: "The company name was read from its website address" },
+  wrong_market: { label: "Other country", tone: "warn", hint: "Found when searching this market, but the company is based in another country" },
   export_blocked: { label: "Export forbidden", tone: "bad", hint: "Prohibited product or embargoed market — the trade check would stop the deal" },
   export_review: { label: "Export policy unconfirmed", tone: "warn", hint: "The HS code's export policy is not confirmed (restricted, state trading or never checked)" },
   market_news_avoid: { label: "News: avoid", tone: "bad", hint: "The market news check says avoid this trade now" },
@@ -911,7 +912,7 @@ function ScanDialog({ open, onClose, onScan, pending }: {
   );
 }
 
-function ScanReportCard() {
+export function ScanReportCard() {
   const { data: report } = useScanReport();
   const [open, setOpen] = useState(false);
   if (!report) return null;

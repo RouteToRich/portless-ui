@@ -96,6 +96,15 @@ export function useMatchBoard(dealId: string | undefined, enabled = true) {
   });
 }
 
+/** The prospect desk: every open prospect with its worth, whose move it is and the next moves. */
+export function useProspectDesk() {
+  return useQuery({
+    queryKey: ["prospect-desk"],
+    queryFn: () => MatchApi2.desk(),
+    refetchInterval: 60000,
+  });
+}
+
 export function useMatchActions(dealId: string) {
   const qc = useQueryClient();
   const invalidate = () => {
@@ -407,6 +416,54 @@ export function useCounterparties(
     queryFn: () => CounterpartiesApi.list(role, filters),
     refetchInterval: options.live ? 10_000 : false,
     enabled: options.enabled ?? true,
+  });
+}
+
+/** Do-not-contact switch for one directory company. */
+export function useContactPreference() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ role, id, doNotContact, reason }: { role: "buyer" | "supplier"; id: string; doNotContact: boolean; reason?: string }) =>
+      CounterpartiesApi.setContactPreference(role, id, doNotContact, reason),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["counterparties"] }),
+  });
+}
+
+/** One company's profile (opened from the directory). */
+export function useCounterpartyProfile(role: "buyer" | "supplier", id: string | null) {
+  return useQuery({
+    queryKey: ["counterparty-profile", role, id],
+    queryFn: () => CounterpartiesApi.profile(role, id as string),
+    enabled: Boolean(id),
+  });
+}
+
+/** Add a directory company to an open prospect. */
+export function useAddToProspect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ role, id, dealId }: { role: "buyer" | "supplier"; id: string; dealId: string }) =>
+      CounterpartiesApi.addToProspect(role, id, dealId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["counterparty-profile"] });
+      qc.invalidateQueries({ queryKey: ["counterparties"] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
+      qc.invalidateQueries({ queryKey: ["prospect-desk"] });
+    },
+  });
+}
+
+/** The directory at a glance. */
+export function useDirectorySummary() {
+  return useQuery({ queryKey: ["directory-summary"], queryFn: () => CounterpartiesApi.summary(), refetchInterval: 60000 });
+}
+
+/** Store the directory clean-up (names, roles). */
+export function useCleanDirectory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => CounterpartiesApi.cleanDirectory(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["counterparties"] }),
   });
 }
 

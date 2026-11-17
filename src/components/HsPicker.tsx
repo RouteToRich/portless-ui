@@ -5,7 +5,13 @@ import { OpportunitiesApi } from "@/api/endpoints";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-export type HsChoice = { code: string; name: string | null; description: string | null };
+export type HsChoice = {
+  code: string;
+  name: string | null;
+  description: string | null;
+  /** The product name a web search finds companies with ("dried onions", never the official text). */
+  search_name?: string | null;
+};
 
 /**
  * Pick an HS code by typing a product ("basmati", "chilli powder") or a code prefix
@@ -79,6 +85,9 @@ export function HsPicker({
             >
               <span className="font-mono text-xs font-semibold">{r.code}</span>
               <span className="ml-2 text-xs">{r.name}</span>
+              {r.search_name && r.search_name !== r.name && (
+                <span className="ml-2 text-[10px] text-[#4f8cff]">searches “{r.search_name}”</span>
+              )}
               {r.description && r.description !== r.name && (
                 <span className="block text-[10px] text-muted-foreground truncate">{r.description}</span>
               )}

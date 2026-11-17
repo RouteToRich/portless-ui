@@ -84,6 +84,12 @@ function PairRow({ pair, dealId, minP }: { pair: PairScore; dealId: string; minP
       <td className="py-2 pr-3">
         <p className="font-medium">{pair.supplier_name}</p>
         {pair.origin_deal_id && <p className="text-[10px] text-muted-foreground">quote from {pair.origin_deal_id}</p>}
+        {pair.quote_age_days != null && (
+          <p className={cn("text-[10px]", (pair.quote_expires_in_days ?? 99) <= 3 ? "text-[#f5a623]" : "text-muted-foreground")}>
+            quoted {pair.quote_age_days}d ago
+            {pair.quote_expires_in_days != null && ` · ${pair.quote_expires_in_days <= 0 ? "expired" : `valid ${pair.quote_expires_in_days}d`}`}
+          </p>
+        )}
         {pair.supplier_history && (
           <p className="text-[10px] text-muted-foreground">
             history: {pair.supplier_history.completed} completed / {pair.supplier_history.bad} disputed
@@ -97,6 +103,19 @@ function PairRow({ pair, dealId, minP }: { pair: PairScore; dealId: string; minP
       </td>
       <td className={cn("py-2 pr-3 font-mono", (pair.margin_pct ?? 0) < (pair.landed?.margin_floor_pct ?? 8) ? "text-[#f5a623]" : "text-[#2ec28a]")}>
         {pair.margin_pct != null ? `${pair.margin_pct.toFixed(1)}%` : "—"}
+      </td>
+      <td className="py-2 pr-3 text-[11px]" title="Walk-away = margin floor; target = target margin">
+        {pair.max_supplier_fob_usd_per_mt != null && (
+          <p>supplier ≤ <span className="font-mono">{money(pair.max_supplier_fob_usd_per_mt)}</span>
+            {pair.target_supplier_fob_usd_per_mt != null && <span className="text-muted-foreground"> (target {money(pair.target_supplier_fob_usd_per_mt)})</span>}</p>
+        )}
+        {pair.min_buyer_price_usd_per_mt != null && (
+          <p>buyer ≥ <span className="font-mono">{money(pair.min_buyer_price_usd_per_mt)}</span>
+            {pair.target_buyer_price_usd_per_mt != null && <span className="text-muted-foreground"> (target {money(pair.target_buyer_price_usd_per_mt)})</span>}</p>
+        )}
+        {(pair.supplier_cut_needed_usd_per_mt ?? 0) > 0 && (
+          <p className="text-[#f5a623]">supplier −{money(pair.supplier_cut_needed_usd_per_mt)}/MT</p>
+        )}
       </td>
       <td className="py-2 pr-3">
         <span className={cn("font-bold", pct >= minP * 100 ? "text-[#2ec28a]" : pct > 0 ? "text-foreground" : "text-muted-foreground")}>{pct}%</span>
@@ -380,8 +399,12 @@ export function MatchBoardPanel({ deal }: { deal: Deal }) {
                             hint={`India export price${board.priors.supplier ? ` ${fmtUSD(board.priors.supplier)}` : " unknown"} + every quote received`} />
               <div className="rounded-lg border border-border bg-secondary/50 p-3 text-[11px] space-y-0.5">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Landed-cost assumptions</p>
-                <p>Freight {money(board.assumptions.freight_usd_per_mt)}/MT · insurance {board.assumptions.insurance_pct}%</p>
-                <p>Inspection {money(board.assumptions.inspection_usd_per_shipment)}/shipment · escrow fee {board.assumptions.escrow_fee_pct}%</p>
+                <p>Freight {money(board.assumptions.freight_usd_per_mt as number | null)}/MT{board.assumptions.freight_basis ? ` (${String(board.assumptions.freight_basis).replace("_", " ")})` : ""} · insurance {board.assumptions.insurance_pct}%</p>
+                {Number(board.assumptions.incentive_pct_of_fob ?? 0) > 0 && (
+                  <p>Export incentives +{board.assumptions.incentive_pct_of_fob}% of FOB (confirmed)</p>
+                )}
+                {board.target_margin_pct != null && <p>Target margin {board.target_margin_pct}% (walk-away = floor)</p>}
+                <p>Inspection {money(board.assumptions.inspection_usd_per_shipment as number | null)}/shipment · escrow fee {board.assumptions.escrow_fee_pct}%</p>
                 <p>Margin floor {board.assumptions.margin_floor_pct}%{board.assumptions.import_duty_pct != null ? ` · buyer's import duty ${board.assumptions.import_duty_pct}%` : ""}</p>
                 <p className="text-muted-foreground">Match proposed at ≥ {Math.round(board.min_probability * 100)}% chance with firm prices</p>
                 {board.learning && (
@@ -402,6 +425,12 @@ export function MatchBoardPanel({ deal }: { deal: Deal }) {
               </ul>
             )}
 
+            {(board.expired_offers ?? []).length > 0 && (
+              <p className="text-[11px] text-[#f5a623]">
+                Expired quotes (not scored): {(board.expired_offers ?? []).map((o) => `${o.company_name || o.supplier_id}${o.fob_price_usd_per_mt ? ` ${money(o.fob_price_usd_per_mt)}` : ""}`).join(" · ")} — ask for a fresh price
+              </p>
+            )}
+
             {board.pairs.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -413,6 +442,7 @@ export function MatchBoardPanel({ deal }: { deal: Deal }) {
                       <th className="text-left py-1.5 pr-3">Supplier FOB</th>
                       <th className="text-left py-1.5 pr-3" title="Lowest price PortLess can offer and keep its margin floor">Our minimum</th>
                       <th className="text-left py-1.5 pr-3">Margin</th>
+                      <th className="text-left py-1.5 pr-3" title="Prices that still keep the margin floor (and the target margin) — what to push each side to">Walk-away</th>
                       <th className="text-left py-1.5 pr-3">Chance</th>
                       <th className="text-left py-1.5 pr-3">Next step</th>
                       <th />

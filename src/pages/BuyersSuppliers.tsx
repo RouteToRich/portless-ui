@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Factory, Globe, Mail, Phone, RefreshCw, Search, Users, Zap } from "lucide-react";
-import { cn, fmtDateTime, fmtUSD, timeAgo } from "@/lib/utils";
+import { Ban, Factory, Globe, LayoutGrid, List, Mail, Phone, RefreshCw, Search, Sparkles, Users, Zap } from "lucide-react";
+import { BookSummary, CompanyCard, CompanyProfileSheet } from "@/components/directory/CompanyViews";
+import { cn, fmtDateTime, timeAgo } from "@/lib/utils";
 import {
   getWorldwideSearch,
   setWorldwideSearch,
+  useCatalogue,
+  useCleanDirectory,
+  useContactPreference,
   useCounterparties,
   useScanOpportunities,
   useTradeSources,
   useValidateCounterparty,
 } from "@/api/hooks";
-import type { Counterparty, ValidationStatus } from "@/api/types";
+import type { Counterparty, CounterpartyRelationship, ValidationStatus } from "@/api/types";
+import { useAuth } from "@/lib/auth";
+import { FlagChips, ScanReportCard } from "@/pages/OpportunityRadar";
 import { ValidationBadge } from "@/components/ValidationBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,6 +85,128 @@ function OutcomeBadge({ c }: { c: Counterparty }) {
   );
 }
 
+const STAGE_STYLE: Record<string, { label: string; cls: string }> = {
+  traded: { label: "traded", cls: "bg-[#2ec28a]/15 text-[#2ec28a] border-[#2ec28a]/30" },
+  in_deal: { label: "in a deal", cls: "bg-[#28c2a0]/15 text-[#28c2a0] border-[#28c2a0]/30" },
+  quoted: { label: "quoted", cls: "bg-[#4f8cff]/15 text-[#4f8cff] border-[#4f8cff]/30" },
+  interested: { label: "said yes", cls: "bg-[#4f8cff]/15 text-[#4f8cff] border-[#4f8cff]/30" },
+  replied: { label: "replied", cls: "bg-secondary text-foreground border-border" },
+  contacted: { label: "contacted", cls: "bg-secondary text-muted-foreground border-border" },
+  new: { label: "never contacted", cls: "bg-secondary text-muted-foreground border-border" },
+  declined: { label: "declined", cls: "bg-[#f5a623]/10 text-[#f5a623] border-[#f5a623]/25" },
+  do_not_contact: { label: "do not contact", cls: "bg-[#ff5d6c]/10 text-[#ff5d6c] border-[#ff5d6c]/25" },
+};
+
+const STAGE_OPTIONS = ["", "new", "contacted", "replied", "interested", "quoted", "in_deal", "traded", "declined", "do_not_contact"];
+
+function usd0(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+}
+
+/** Where PortLess stands with the company: stage, prospects, last contact / reply, deals. */
+function RelationshipCell({ rel }: { rel?: CounterpartyRelationship | null }) {
+  const stage = rel?.stage ?? "new";
+  const st = STAGE_STYLE[stage] ?? STAGE_STYLE.new;
+  return (
+    <div className="space-y-0.5">
+      <span className={cn("inline-block text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", st.cls)}>{st.label}</span>
+      {rel && (rel.prospects > 0 || rel.deals_won > 0) && (
+        <p className="text-[10px] text-muted-foreground whitespace-nowrap">
+          {rel.prospects > 0 && `${rel.prospects} prospect${rel.prospects === 1 ? "" : "s"}`}
+          {rel.deals_won > 0 && ` · ${rel.deals_won} won`}
+          {rel.deals_active > 0 && ` · ${rel.deals_active} live`}
+        </p>
+      )}
+      {rel?.last_reply_at ? (
+        <p className="text-[10px] text-muted-foreground">replied {timeAgo(rel.last_reply_at)}</p>
+      ) : rel?.last_contact_at ? (
+        <p className="text-[10px] text-muted-foreground">contacted {timeAgo(rel.last_contact_at)}</p>
+      ) : null}
+      {rel?.reply_rate != null && rel.contacted ? (
+        <p className="text-[10px] text-muted-foreground">reply rate {Math.round(rel.reply_rate * 100)}%</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Buyers: their stated target and requirement. Suppliers: last quote vs the product's median. */
+function PriceCell({ c }: { c: Counterparty }) {
+  const rel = c.relationship;
+  if (c.role === "buyer") {
+    if (!rel?.target_price_usd_per_mt && !rel?.requirement) return <span className="text-muted-foreground">—</span>;
+    return (
+      <div className="space-y-0.5">
+        {rel?.target_price_usd_per_mt != null && <p className="font-mono">{usd0(rel.target_price_usd_per_mt)}/MT target</p>}
+        {rel?.requirement && <p className="text-[10px] text-muted-foreground">{rel.requirement}</p>}
+      </div>
+    );
+  }
+  const quote = rel?.last_quote_usd_per_mt ?? c.estimated_fob_price_usd;
+  if (quote == null) return <span className="text-muted-foreground">—</span>;
+  const vs = rel?.quote_vs_median_pct;
+  return (
+    <div className="space-y-0.5 whitespace-nowrap">
+      <p className="font-mono">{usd0(quote)} FOB</p>
+      {rel?.last_quote_at && <p className="text-[10px] text-muted-foreground">quoted {timeAgo(rel.last_quote_at)}</p>}
+      {vs != null && (
+        <p className={cn("text-[10px]", vs < 0 ? "text-[#2ec28a]" : "text-[#f5a623]")}>
+          {vs < 0 ? `${Math.abs(vs).toFixed(0)}% below` : `${vs.toFixed(0)}% above`} median
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ScoreCell({ c }: { c: Counterparty }) {
+  if (c.score == null) return <FitBadge score={c.fit_score} />;
+  const variant = c.score >= 60 ? "success" : c.score >= 35 ? "info" : "secondary";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span><Badge variant={variant}>{Math.round(c.score)}</Badge></span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <div className="space-y-0.5">{(c.score_basis ?? []).map((b) => <div key={b}>{b}</div>)}</div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Do-not-contact switch (staff): outreach skips the company in every prospect. */
+function ContactSwitch({ role, c }: { role: Role; c: Counterparty }) {
+  const pref = useContactPreference();
+  const { user } = useAuth();
+  if (!user?.is_portless) return null;
+  async function toggle() {
+    if (!c.do_not_contact) {
+      const reason = window.prompt(`Why should PortLess never write to ${c.name} again?`);
+      if (!reason || !reason.trim()) return;
+      try {
+        await pref.mutateAsync({ role, id: c.id, doNotContact: true, reason: reason.trim() });
+        toast.success(`${c.name} is on the do-not-contact list`);
+      } catch {
+        toast.error("Could not update the contact preference");
+      }
+      return;
+    }
+    if (!window.confirm(`Allow PortLess to write to ${c.name} again? (${c.dnc_reason ?? "no reason recorded"})`)) return;
+    try {
+      await pref.mutateAsync({ role, id: c.id, doNotContact: false });
+      toast.success(`${c.name} can be contacted again`);
+    } catch {
+      toast.error("Could not update the contact preference");
+    }
+  }
+  return (
+    <button type="button" onClick={toggle} disabled={pref.isPending}
+      className={cn("text-[10px] hover:underline disabled:opacity-50", c.do_not_contact ? "text-primary" : "text-muted-foreground")}
+      title={c.do_not_contact ? c.dnc_reason ?? "" : "Never write to this company again (in every prospect)"}>
+      {c.do_not_contact ? "Allow contact" : "Do not contact"}
+    </button>
+  );
+}
+
 function Contact({ c }: { c: Counterparty }) {
   if (!c.email && !c.phone) return <span className="text-muted-foreground">—</span>;
   return (
@@ -138,13 +266,14 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
         <thead>
           <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
             <th className="py-2 pr-3 font-semibold">Company</th>
+            <th className="py-2 pr-3 font-semibold" title="Who to work with first: check, reachability, engagement, track record, price">Score</th>
+            <th className="py-2 pr-3 font-semibold" title="Where PortLess stands with the company across every prospect and deal">Relationship</th>
             <th className="py-2 pr-3 font-semibold">Check</th>
             <th className="py-2 pr-3 font-semibold">Country</th>
             <th className="py-2 pr-3 font-semibold">Contact</th>
             <th className="py-2 pr-3 font-semibold">HS codes</th>
-            {role === "supplier" && <th className="py-2 pr-3 font-semibold">FOB / MT</th>}
+            <th className="py-2 pr-3 font-semibold">{role === "supplier" ? "Price (FOB)" : "Wants"}</th>
             <th className="py-2 pr-3 font-semibold">Source</th>
-            <th className="py-2 pr-3 font-semibold">Fit</th>
             <th className="py-2 pr-3 font-semibold">Outcome</th>
             <th className="py-2 font-semibold">Last seen</th>
           </tr>
@@ -170,9 +299,18 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
                     {c.gstin && `GSTIN ${c.gstin}`} {c.iec && `IEC ${c.iec}`}
                   </p>
                 )}
+                {c.do_not_contact && (
+                  <p className="text-[10px] text-[#ff5d6c] mt-0.5 flex items-center gap-1" title={c.dnc_reason ?? ""}>
+                    <Ban className="w-3 h-3" /> do not contact{c.dnc_reason ? ` — ${c.dnc_reason}` : ""}
+                  </p>
+                )}
+                {(c.flags ?? []).length > 0 && <div className="mt-1"><FlagChips flags={c.flags} /></div>}
               </td>
+              <td className="py-2.5 pr-3"><ScoreCell c={c} /></td>
+              <td className="py-2.5 pr-3"><RelationshipCell rel={c.relationship} /></td>
               <td className="py-2.5 pr-3">
                 <CheckCell role={role} c={c} />
+                <div className="mt-1"><ContactSwitch role={role} c={c} /></div>
               </td>
               <td className="py-2.5 pr-3 whitespace-nowrap">
                 <p>{c.country ?? "—"}</p>
@@ -188,18 +326,11 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
                   {c.hs_codes.map((hs) => <HsCode key={hs} code={hs} className="font-mono whitespace-nowrap" />)}
                 </span>
               </td>
-              {role === "supplier" && (
-                <td className="py-2.5 pr-3 whitespace-nowrap">
-                  {c.estimated_fob_price_usd != null ? fmtUSD(c.estimated_fob_price_usd) : "—"}
-                </td>
-              )}
+              <td className="py-2.5 pr-3"><PriceCell c={c} /></td>
               <td className="py-2.5 pr-3">
                 <Badge variant="secondary" className="whitespace-nowrap">
                   {SOURCE_LABEL[c.source] ?? c.source}
                 </Badge>
-              </td>
-              <td className="py-2.5 pr-3">
-                <FitBadge score={c.fit_score} />
               </td>
               <td className="py-2.5 pr-3">
                 <OutcomeBadge c={c} />
@@ -224,6 +355,11 @@ function RolePanel({
   country,
   check,
   live,
+  stage,
+  contactable,
+  sort,
+  view,
+  onOpen,
 }: {
   role: Role;
   q: string;
@@ -232,6 +368,11 @@ function RolePanel({
   country: string;
   check: ValidationStatus | "";
   live: boolean;
+  stage: string;
+  contactable: boolean;
+  sort: "recent" | "score";
+  view: "cards" | "table";
+  onOpen: (id: string) => void;
 }) {
   const { data, isLoading, isError, refetch } = useCounterparties(
     role,
@@ -241,11 +382,16 @@ function RolePanel({
       country: country.trim().toUpperCase() || undefined,
       hs_code: hs.trim() || undefined,
       validation: check || undefined,
+      stage: stage || undefined,
+      contactable: contactable || undefined,
+      sort,
     },
     { live }
   );
   const rows = data ?? [];
   const withEmail = rows.filter((r) => r.email).length;
+  const engaged = rows.filter((r) => ["replied", "interested", "quoted", "in_deal", "traded"].includes(r.relationship?.stage ?? "")).length;
+  const dnc = rows.filter((r) => r.do_not_contact).length;
 
   if (isLoading) {
     return (
@@ -275,7 +421,7 @@ function RolePanel({
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
           {live
             ? "Scan in progress — companies appear here as they are found (refreshing every 10 s)."
-            : q || market || hs || country || check
+            : q || market || hs || country || check || stage || contactable
             ? "Nothing matches these filters."
             : "Run a scan: every company it finds is listed here, even when the scan creates no opportunity or deal. Add your products on the Catalogue page so the search uses product names."}
         </p>
@@ -285,9 +431,16 @@ function RolePanel({
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-muted-foreground">
-        {rows.length} {role === "buyer" ? "buyers" : "suppliers"} · {withEmail} with an e-mail
+        {rows.length} {role === "buyer" ? "buyers" : "suppliers"} · {withEmail} with an e-mail · {engaged} engaged
+        {dnc > 0 && ` · ${dnc} do not contact`}
       </p>
-      <CounterpartyTable role={role} rows={rows} />
+      {view === "cards" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {rows.map((c) => <CompanyCard key={c.id} role={role} c={c} onOpen={() => onOpen(c.id)} />)}
+        </div>
+      ) : (
+        <CounterpartyTable role={role} rows={rows} />
+      )}
     </div>
   );
 }
@@ -299,6 +452,13 @@ export function BuyersSuppliers() {
   const [hs, setHs] = useState("");
   const [country, setCountry] = useState("");
   const [check, setCheck] = useState<ValidationStatus | "">("");
+  const [stage, setStage] = useState("");
+  const [contactable, setContactable] = useState(false);
+  const [sort, setSort] = useState<"recent" | "score">("score");
+  const [view, setView] = useState<"cards" | "table">("cards");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const clean = useCleanDirectory();
+  const { user } = useAuth();
   const [worldwide, setWorldwide] = useState(getWorldwideSearch);
   const indiaOnly = country.trim().toUpperCase() === "IN";
   const scan = useScanOpportunities();
@@ -319,15 +479,31 @@ export function BuyersSuppliers() {
   const [pick, setPick] = useState<HsChoice | null>(null);
   const [productName, setProductName] = useState("");
   const [pickMarkets, setPickMarkets] = useState("");
+  const { data: cat } = useCatalogue();
+  const nameProblem = (() => {
+    const n = productName.trim();
+    if (!pick) return null;
+    if (!n || /^\d+$/.test(n)) return "Give the product a name — a bare HS number finds no companies.";
+    if (n.includes(";") || n.includes("…") || n.split(/\s+/).length > 5)
+      return `This reads like the official HS text; the search will use “${pick.search_name ?? "a short product name"}” instead. Type a short trade name (2–4 words) to override.`;
+    return null;
+  })();
+  const typedMarkets = pickMarkets.split(/[\s,]+/).map((m) => m.trim().toUpperCase()).filter((m) => /^[A-Z]{2}$/.test(m));
+  const lineMarkets = pick ? (cat?.products ?? []).find((p) => p.active && pick.code.startsWith(p.hs_code))?.markets ?? [] : [];
+  const fallbackMarkets = lineMarkets.length ? lineMarkets
+    : Array.from(new Set((cat?.products ?? []).filter((p) => p.active).flatMap((p) => p.markets))).length
+      ? Array.from(new Set((cat?.products ?? []).filter((p) => p.active).flatMap((p) => p.markets)))
+      : cat?.defaults.markets ?? [];
+  const searchMarkets = typedMarkets.length ? typedMarkets : fallbackMarkets;
 
   async function handleProductScan() {
     if (!pick) return;
-    const name = productName.trim() || pick.name || "";
+    const name = productName.trim() || pick.search_name || pick.name || "";
     if (!name || /^\d+$/.test(name)) {
       toast.error("Give the product a name to search for (a bare HS number finds no companies).");
       return;
     }
-    const markets = pickMarkets.split(/[\s,]+/).map((m) => m.trim().toUpperCase()).filter((m) => /^[A-Z]{2}$/.test(m));
+    const markets = typedMarkets;
     setHs(pick.code);
     try {
       const opps = await scan.mutateAsync({
@@ -337,8 +513,9 @@ export function BuyersSuppliers() {
         product_names: { [pick.code]: name },
       });
       toast.success(`Search for ${name} complete`, {
-        description: `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} · the buyers and suppliers found are listed below`,
+        description: `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} · the buyers and suppliers found are listed below, best first; "Last search" says what each market returned`,
       });
+      setSort("score");
     } catch {
       toast.warning("The search is still running on the server", {
         description: "Companies found so far are listed; use Refresh to load more.",
@@ -366,7 +543,8 @@ export function BuyersSuppliers() {
         <div className="min-w-0">
           <h1 className="text-lg font-bold">Buyers &amp; Suppliers</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Every company the scanner found, in any country, with or without an opportunity or deal
+            Your trading book: every company the scanner found, where PortLess stands with it across all prospects and deals,
+            its prices and score, and who must never be contacted again
             {sourcesInfo && !sourcesInfo.apify.token_present && " · APIFY_TOKEN not set, so no new companies are found"}
           </p>
         </div>
@@ -379,6 +557,25 @@ export function BuyersSuppliers() {
         >
           <RefreshCw className="w-3.5 h-3.5" /> Refresh
         </Button>
+        {user?.is_portless && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={clean.isPending}
+            title="Store the current clean-up on every record: names cut out of marketing sentences and split from run-together domains, usable e-mails, the company's own country, and buyers that look like Indian exporters flagged"
+            onClick={async () => {
+              try {
+                const out = await clean.mutateAsync();
+                toast.success(`Directory cleaned: ${out.changed} record(s) updated`);
+              } catch {
+                toast.error("Could not clean the directory");
+              }
+            }}
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Clean directory
+          </Button>
+        )}
         <Button
           variant={worldwide ? "default" : "outline"}
           size="sm"
@@ -425,7 +622,7 @@ export function BuyersSuppliers() {
               value={pick}
               onChange={(c) => {
                 setPick(c);
-                setProductName(c?.name ?? "");
+                setProductName(c?.search_name ?? c?.name ?? "");
               }}
             />
             <Input
@@ -450,49 +647,27 @@ export function BuyersSuppliers() {
             </Button>
           </div>
           {pick?.description && <p className="text-[10px] text-muted-foreground">HS {pick.code}: {pick.description}</p>}
+          {nameProblem && <p className="text-[11px] text-[#f5a623]">{nameProblem}</p>}
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            {scanning && <RefreshCw className="w-3 h-3 animate-spin" />}
+            {hsFilter
+              ? <>Found for HS {hsFilter}: <b className="text-foreground">{hsBuyers?.length ?? 0}</b> buyers · <b className="text-foreground">{hsSuppliers?.length ?? 0}</b> suppliers
+                  <span>({buyers?.length ?? 0} buyers · {suppliers?.length ?? 0} suppliers in the whole directory)</span></>
+              : <>Directory: <b className="text-foreground">{buyers?.length ?? 0}</b> buyers · <b className="text-foreground">{suppliers?.length ?? 0}</b> suppliers</>}
+          </p>
+          {pick && (
+            <p className="text-[11px] text-muted-foreground">
+              Will search: importers / wholesale distributors of “{(nameProblem ? pick.search_name : productName.trim()) || pick.search_name || pick.name}” in{" "}
+              <b className="text-foreground">{searchMarkets.length ? searchMarkets.join(", ") : "the default markets"}</b>
+              {!typedMarkets.length && (lineMarkets.length ? " (this product's catalogue markets)" : " (catalogue / default markets — type markets to choose)")}
+              {" · "}exporters / manufacturers in <b className="text-foreground">India</b>{worldwide ? " and worldwide" : ""}
+              {" · "}about {2 * searchMarkets.length + 2 + (worldwide ? 2 : 0)} paid search lines
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {[
-          {
-            label: hsFilter ? `Buyers found for HS ${hsFilter}` : "Buyers found",
-            value: (hsFilter ? hsBuyers?.length : buyers?.length) ?? 0,
-            total: buyers?.length ?? 0,
-            icon: Users,
-            color: "#4f8cff",
-          },
-          {
-            label: hsFilter ? `Suppliers found for HS ${hsFilter}` : "Suppliers found",
-            value: (hsFilter ? hsSuppliers?.length : suppliers?.length) ?? 0,
-            total: suppliers?.length ?? 0,
-            icon: Factory,
-            color: "#28c2a0",
-          },
-        ].map((s) => {
-          const Icon = s.icon;
-          return (
-            <Card key={s.label}>
-              <CardContent className="flex items-center gap-3 pt-4">
-                <div
-                  className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
-                  style={{ background: `${s.color}1a` }}
-                >
-                  <Icon className="w-5 h-5" style={{ color: s.color }} />
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground">{s.label}</p>
-                  <p className="text-xl font-bold" style={{ color: s.color }}>
-                    {s.value}
-                    {hsFilter && scanning && <RefreshCw className="inline ml-2 w-3.5 h-3.5 animate-spin opacity-60" />}
-                  </p>
-                  {hsFilter && <p className="text-[10px] text-muted-foreground">{s.total} in the whole directory</p>}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <ScanReportCard />
 
       <Card>
         <CardContent className="pt-4 space-y-3">
@@ -568,17 +743,63 @@ export function BuyersSuppliers() {
                   placeholder="HS code"
                   className="h-8 text-xs w-[110px] font-mono"
                 />
+                <select
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  value={stage}
+                  onChange={(e) => setStage(e.target.value)}
+                  aria-label="Relationship stage"
+                >
+                  {STAGE_OPTIONS.map((v) => (
+                    <option key={v || "all"} value={v}>{v ? (STAGE_STYLE[v]?.label ?? v) : "Any stage"}</option>
+                  ))}
+                </select>
+                <Button
+                  variant={contactable ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 text-xs"
+                  aria-pressed={contactable}
+                  title="Only companies outreach may write to: not failed, not declined, not on the do-not-contact list, with an e-mail or phone"
+                  onClick={() => setContactable(!contactable)}
+                >
+                  Contactable
+                </Button>
+                <select
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as "recent" | "score")}
+                  aria-label="Sort"
+                >
+                  <option value="score">Best first (score)</option>
+                  <option value="recent">Newest first</option>
+                </select>
+                <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="View">
+                  <button type="button" onClick={() => setView("cards")} aria-pressed={view === "cards"} title="Cards"
+                    className={cn("h-8 px-2.5", view === "cards" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary")}>
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                  <button type="button" onClick={() => setView("table")} aria-pressed={view === "table"} title="Table"
+                    className={cn("h-8 px-2.5 border-l border-border", view === "table" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary")}>
+                    <List className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
+            <div className="mt-3">
+              <BookSummary role={tab} stage={stage} onStage={setStage} onOpen={setOpenId} />
+            </div>
             <TabsContent value="buyer" className="mt-3">
-              <RolePanel role="buyer" q={q} market={market} hs={hs} country={country} check={check} live={scanning} />
+              <RolePanel role="buyer" q={q} market={market} hs={hs} country={country} check={check} live={scanning}
+                         stage={stage} contactable={contactable} sort={sort} view={view} onOpen={setOpenId} />
             </TabsContent>
             <TabsContent value="supplier" className="mt-3">
-              <RolePanel role="supplier" q={q} market={market} hs={hs} country={country} check={check} live={scanning} />
+              <RolePanel role="supplier" q={q} market={market} hs={hs} country={country} check={check} live={scanning}
+                         stage={stage} contactable={contactable} sort={sort} view={view} onOpen={setOpenId} />
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
+
+      <CompanyProfileSheet role={tab} id={openId} onClose={() => setOpenId(null)} />
     </div>
   );
 }
