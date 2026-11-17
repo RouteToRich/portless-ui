@@ -24,11 +24,12 @@ import {
   useCreateDeal,
   useTradeSources,
   useRescoreOpportunity,
+  useConfirmHsPolicy,
   getCounterpartyView,
   setCounterpartyView,
   type CounterpartyView,
 } from "@/api/hooks";
-import type { Opportunity, OpportunityRescore, PairMatch, TradeSource } from "@/api/types";
+import type { Opportunity, OpportunityRescore, PairMatch, ReadinessCheck, TradeSource } from "@/api/types";
 import { useAuth } from "@/lib/auth";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -205,6 +206,8 @@ function OpportunityDetail({ opp }: { opp: Opportunity }) {
           )}
         </div>
       )}
+
+      <ReadinessList opp={opp} />
 
       <ProfitPanel opp={opp} />
 
@@ -536,6 +539,11 @@ const FLAG_INFO: Record<string, { label: string; tone: "warn" | "bad" | "good" |
   role_suspect: { label: "Looks like an Indian exporter", tone: "bad", hint: "Indian legal form, domain, phone or 'exporter from India' text: not an importer in the market. Kept out of matching and outreach" },
   product_mismatch: { label: "Other product", tone: "warn", hint: "The supplier's own site names another product, not this one" },
   name_from_domain: { label: "Name from website", tone: "info", hint: "The company name was read from its website address" },
+  export_blocked: { label: "Export forbidden", tone: "bad", hint: "Prohibited product or embargoed market — the trade check would stop the deal" },
+  export_review: { label: "Export policy unconfirmed", tone: "warn", hint: "The HS code's export policy is not confirmed (restricted, state trading or never checked)" },
+  market_news_avoid: { label: "News: avoid", tone: "bad", hint: "The market news check says avoid this trade now" },
+  market_news_caution: { label: "News: caution", tone: "warn", hint: "The market news check says caution" },
+  stale_market_data: { label: "Old prices", tone: "warn", hint: "The Comtrade figures behind these prices are more than two years old" },
 };
 
 const TONE_STYLE: Record<string, string> = {
@@ -545,7 +553,7 @@ const TONE_STYLE: Record<string, string> = {
   info: "bg-secondary text-muted-foreground border-border",
 };
 
-function FlagChips({ flags, skip = [] }: { flags?: string[]; skip?: string[] }) {
+export function FlagChips({ flags, skip = [] }: { flags?: string[]; skip?: string[] }) {
   const shown = (flags ?? []).filter((f) => !skip.includes(f));
   if (shown.length === 0) return null;
   return (
@@ -594,7 +602,7 @@ function priceTag(estimated: boolean) {
 // ── Detail panels ───────────────────────────────────────────────────────────
 
 /** From buyer price to expected profit, line by line, each with its basis. */
-function ProfitPanel({ opp }: { opp: Opportunity }) {
+export function ProfitPanel({ opp }: { opp: Opportunity }) {
   const p = opp.profit;
   if (!p) return null;
   const row = (label: string, value: string, sub?: string | null, strong?: boolean, color?: string) => (
@@ -606,6 +614,10 @@ function ProfitPanel({ opp }: { opp: Opportunity }) {
       <span className={cn("text-xs tabular-nums shrink-0", strong && "font-bold text-sm")} style={{ color }}>{value}</span>
     </div>
   );
+  const freightSub = p.freight_usd_per_mt != null
+    ? `sea freight ${fmtUsd0(p.freight_usd_per_mt)}/MT · ${p.freight_basis?.startsWith("lane_quote") ? p.freight_basis.replace("lane_quote", "lane quote") : "regional estimate until a lane quote"}${p.container_type === "reefer" ? " · reefer" : ""}`
+    : null;
+  const trend = p.mandi_trend;
   return (
     <div className="rounded-lg border border-border bg-popover px-3 py-2.5" data-testid="profit-panel">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -618,46 +630,163 @@ function ProfitPanel({ opp }: { opp: Opportunity }) {
           {row("Buyer price (CIF)", p.buyer_price_usd_per_mt != null ? `${fmtUsd0(p.buyer_price_usd_per_mt)}/MT` : "—",
             p.buyer_price_basis ? `from ${BUYER_BASIS[p.buyer_price_basis] ?? p.buyer_price_basis}` : null)}
           {row("Supplier price (FOB India)", p.supplier_price_usd_per_mt != null ? `− ${fmtUsd0(p.supplier_price_usd_per_mt)}/MT` : "—",
-            p.supplier_price_note ?? (p.supplier_price_basis ? `from ${SUPPLIER_BASIS[p.supplier_price_basis] ?? p.supplier_price_basis}` : null))}
+            [p.supplier_price_note ?? (p.supplier_price_basis ? `from ${SUPPLIER_BASIS[p.supplier_price_basis] ?? p.supplier_price_basis}` : null),
+             p.supplier_price_low_usd_per_mt != null && p.supplier_price_high_usd_per_mt != null
+               ? `range ${fmtUsd0(p.supplier_price_low_usd_per_mt)}–${fmtUsd0(p.supplier_price_high_usd_per_mt)}` : null]
+              .filter(Boolean).join(" · ") || null)}
           {row("Freight, inspection, insurance, escrow fee",
             p.landed_cost_usd_per_mt != null && p.supplier_price_usd_per_mt != null
-              ? `− ${fmtUsd0(p.landed_cost_usd_per_mt - p.supplier_price_usd_per_mt)}/MT` : "—",
-            p.freight_usd_per_mt != null ? `sea freight ${fmtUsd0(p.freight_usd_per_mt)}/MT (estimate until a freight quote)` : null)}
+              ? `− ${fmtUsd0(p.landed_cost_usd_per_mt - p.supplier_price_usd_per_mt)}/MT` : "—", freightSub)}
+          {row("Export incentives (RoDTEP + drawback)",
+            p.incentive_usd_per_mt != null ? `+ ${fmtUsd0(p.incentive_usd_per_mt)}/MT` : "not counted",
+            p.incentive_basis ?? "no confirmed rate for this HS code")}
           {row("Margin", p.margin_usd_per_mt != null ? `${fmtUsd0(p.margin_usd_per_mt)}/MT · ${fmtPct(p.margin_pct)}` : "—",
-            p.margin_floor_pct != null ? `margin floor ${p.margin_floor_pct.toFixed(0)}%` : null, true,
+            [p.margin_floor_pct != null ? `margin floor ${p.margin_floor_pct.toFixed(0)}%` : null,
+             p.correction_basis ? `corrected: ${p.correction_basis}` : null].filter(Boolean).join(" · ") || null, true,
             p.margin_usd_per_mt == null ? undefined : p.margin_usd_per_mt > 0 ? (p.meets_floor ? "#2ec28a" : "#f5a623") : "#ff5d6c")}
         </div>
         <div>
-          {row(`Per container (${p.container_mt} MT)`, fmtUsd0(p.margin_per_container_usd))}
+          {row(`Per container (${p.container_mt} MT${p.container_type === "reefer" ? ", reefer" : ""})`, fmtUsd0(p.margin_per_container_usd))}
           {row(`Per lot (${p.lot_mt} MT)`, p.margin_usd_per_mt != null ? fmtUsd0(p.margin_usd_per_mt * p.lot_mt) : "—")}
           {row("Chance of closing", p.p_close != null ? `${(p.p_close * 100).toFixed(0)}%` : "—", p.p_close_basis.join(" · "))}
-          {row("Expected profit", fmtUsd0(p.expected_profit_usd), "margin × lot × chance of closing", true,
+          {row("Expected profit", fmtUsd0(p.expected_profit_usd),
+            p.expected_profit_low_usd != null && p.expected_profit_high_usd != null
+              ? `range ${fmtUsd0(p.expected_profit_low_usd)} – ${fmtUsd0(p.expected_profit_high_usd)} (${p.range_basis})`
+              : "margin × lot × chance of closing", true,
             p.expected_profit_usd == null ? undefined : p.expected_profit_usd > 0 ? "#2ec28a" : "#ff5d6c")}
+          {p.annual_potential_usd != null && row("Profit potential per year", fmtUsd0(p.annual_potential_usd), p.annual_basis)}
         </div>
       </div>
+      {trend && (
+        <p className={cn("text-[11px] mt-1.5", trend.direction === "rising" ? "text-[#2ec28a]" : trend.direction === "falling" ? "text-[#f5a623]" : "text-muted-foreground")}>
+          Mandi price {trend.direction} {trend.change_pct > 0 ? "+" : ""}{trend.change_pct}% over {trend.days} days — {trend.advice}
+        </p>
+      )}
+      <MissingTips opp={opp} />
+    </div>
+  );
+}
+
+/** What the estimate still lacks, and where to get it. */
+function MissingTips({ opp }: { opp: Opportunity }) {
+  const tips = opp.profit?.missing ?? [];
+  if (tips.length === 0) return null;
+  return (
+    <div className="mt-2 border-t border-border pt-1.5">
+      <p className="text-[11px] font-semibold mb-0.5">What's missing and where to get it</p>
+      <ul className="space-y-0.5">
+        {tips.map((t) => (
+          <li key={t.what} className="text-[11px] text-muted-foreground">
+            <span className="text-foreground">{t.what}:</span> {t.how}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const CHECK_STYLE: Record<string, string> = {
+  ok: "bg-[#2ec28a]",
+  warn: "bg-[#f5a623]",
+  fail: "bg-[#ff5d6c]",
+};
+
+/** One dot per check in the table row: green ok, amber warn, red fail. */
+function ReadinessDots({ checks }: { checks?: ReadinessCheck[] }) {
+  if (!checks || checks.length === 0) return null;
+  const fails = checks.filter((c) => c.status === "fail").length;
+  const warns = checks.filter((c) => c.status === "warn").length;
+  return (
+    <div className="flex items-center gap-1" title={checks.map((c) => `${c.status.toUpperCase()} · ${c.label}: ${c.detail}`).join("\n")}>
+      {checks.map((c) => <span key={c.key} className={cn("w-1.5 h-1.5 rounded-full", CHECK_STYLE[c.status])} />)}
+      <span className={cn("text-[10px] ml-1", fails ? "text-[#ff5d6c]" : warns ? "text-[#f5a623]" : "text-[#2ec28a]")}>
+        {fails ? `${fails} blocking` : warns ? `${warns} to check` : "ready"}
+      </span>
+    </div>
+  );
+}
+
+/** The ready-to-start checklist, in the order the deal meets each check. */
+export function ReadinessList({ opp }: { opp: Opportunity }) {
+  const checks = opp.readiness ?? [];
+  const confirm = useConfirmHsPolicy();
+  const { user } = useAuth();
+  if (checks.length === 0) return null;
+  const ep = opp.export_policy;
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2.5" data-testid="readiness">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-xs font-semibold">Ready to start?</span>
+        <ReadinessDots checks={checks} />
+      </div>
+      <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0.5">
+        {checks.map((c) => (
+          <li key={c.key} className="text-[11px] flex items-start gap-1.5">
+            <span className={cn("w-2 h-2 rounded-full mt-1 shrink-0", CHECK_STYLE[c.status])} />
+            <span><span className="text-foreground">{c.label}</span> <span className="text-muted-foreground">— {c.detail}</span></span>
+          </li>
+        ))}
+      </ul>
+      {ep?.severity === "review" && ep.status === "unverified" && user?.is_portless && (
+        <Button
+          size="sm" variant="outline" className="h-7 text-xs mt-2"
+          disabled={confirm.isPending}
+          onClick={async () => {
+            if (!window.confirm(`Confirm that HS ${opp.hs_code} is FREE to export under ITC-HS Schedule 2 (not prohibited, restricted or SCOMET)? This is recorded with your name.`)) return;
+            try {
+              await confirm.mutateAsync({ hs: opp.hs_code, status: "free", note: `checked against ITC-HS Schedule 2 from the radar by ${user.email}` });
+              toast.success("Export policy recorded", { description: `HS ${opp.hs_code}: free to export` });
+            } catch {
+              toast.error("Could not record the export policy");
+            }
+          }}
+        >
+          Confirm free to export
+        </Button>
+      )}
     </div>
   );
 }
 
 /** What the market pays, what India gets, trend and the competing origins. */
-function CorridorFacts({ opp }: { opp: Opportunity }) {
+export function CorridorFacts({ opp }: { opp: Opportunity }) {
   const has = opp.market_avg_usd_per_mt != null || opp.india_to_market_usd_per_mt != null || (opp.competitors ?? []).length > 0;
-  if (!has) return null;
+  if (!has && !opp.market_check && !(opp.import_requirements ?? []).length) return null;
+  const stale = opp.data_period && /^\d{4}/.test(opp.data_period) && Number(opp.data_period.slice(0, 4)) < new Date().getFullYear() - 2;
+  const news = opp.market_check;
   return (
     <div className="rounded-lg border border-border bg-popover px-3 py-2.5 space-y-1.5">
-      <span className="text-xs font-semibold">Market</span>
-      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-        <span>Pays for India's goods: <span className="text-foreground font-medium">{fmtUsd0(opp.india_to_market_usd_per_mt)}/MT</span></span>
-        <span>All-origin average: <span className="text-foreground font-medium">{fmtUsd0(opp.market_avg_usd_per_mt)}/MT</span></span>
-        <span>India's export average (FOB): <span className="text-foreground font-medium">{fmtUsd0(opp.india_world_fob_usd_per_mt)}/MT</span></span>
-        {opp.import_value_usd != null && <span>Imports: <span className="text-foreground font-medium">{fmtUsd0(opp.import_value_usd)}/yr</span></span>}
-        {opp.import_growth_pct != null && (
-          <span>YoY: <span className={cn("font-medium", opp.import_growth_pct >= 0 ? "text-[#2ec28a]" : "text-[#ff5d6c]")}>
-            {opp.import_growth_pct >= 0 ? "+" : ""}{opp.import_growth_pct.toFixed(1)}%</span></span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold">Market</span>
+        {opp.data_period && (
+          <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", stale ? TONE_STYLE.warn : TONE_STYLE.info)}
+            title="Year of the UN Comtrade figures behind these prices">
+            Comtrade {opp.data_period}{stale ? " · old" : ""}
+          </span>
         )}
-        {opp.india_share_pct != null && <span>India's share: <span className="text-foreground font-medium">{opp.india_share_pct.toFixed(1)}%</span></span>}
-        {opp.freight_pct != null && <span>Freight ≈ <span className="text-foreground font-medium">{opp.freight_pct.toFixed(1)}%</span> of price</span>}
+        {(opp.market_data_flags ?? []).filter((f) => f !== "stale_period").map((f) => (
+          <span key={f} className={cn("text-[10px] px-1.5 py-0.5 rounded border", TONE_STYLE.info)}>{f.replace(/_/g, " ")}</span>
+        ))}
+        {opp.scan_cost && (
+          <span className="text-[10px] text-muted-foreground ml-auto" title="Apify runs this opportunity's scan and rescores cost">
+            scan cost {opp.scan_cost.runs} run(s) · ${opp.scan_cost.usd.toFixed(2)}
+          </span>
+        )}
       </div>
+      {has && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+          <span>Pays for India's goods: <span className="text-foreground font-medium">{fmtUsd0(opp.india_to_market_usd_per_mt)}/MT</span></span>
+          <span>All-origin average: <span className="text-foreground font-medium">{fmtUsd0(opp.market_avg_usd_per_mt)}/MT</span></span>
+          <span>India's export average (FOB): <span className="text-foreground font-medium">{fmtUsd0(opp.india_world_fob_usd_per_mt)}/MT</span></span>
+          {opp.import_value_usd != null && <span>Imports: <span className="text-foreground font-medium">{fmtUsd0(opp.import_value_usd)}/yr</span></span>}
+          {opp.import_growth_pct != null && (
+            <span>YoY: <span className={cn("font-medium", opp.import_growth_pct >= 0 ? "text-[#2ec28a]" : "text-[#ff5d6c]")}>
+              {opp.import_growth_pct >= 0 ? "+" : ""}{opp.import_growth_pct.toFixed(1)}%</span></span>
+          )}
+          {opp.india_share_pct != null && <span>India's share: <span className="text-foreground font-medium">{opp.india_share_pct.toFixed(1)}%</span></span>}
+          {opp.freight_pct != null && <span>Freight ≈ <span className="text-foreground font-medium">{opp.freight_pct.toFixed(1)}%</span> of price</span>}
+        </div>
+      )}
       {(opp.competitors ?? []).length > 0 && (
         <div className="text-[11px] text-muted-foreground">
           Competing origins:{" "}
@@ -675,6 +804,23 @@ function CorridorFacts({ opp }: { opp: Opportunity }) {
             </span>
           )}
         </div>
+      )}
+      {news && news.verdict && news.verdict !== "unchecked" && (
+        <p className={cn("text-[11px]", news.verdict === "avoid" ? "text-[#ff5d6c]" : news.verdict === "caution" ? "text-[#f5a623]" : "text-[#2ec28a]")}>
+          News check: <b>{news.verdict}</b>{news.summary ? ` — ${news.summary}` : ""}
+          {news.checked_at && <span className="text-muted-foreground"> ({timeAgo(news.checked_at)})</span>}
+        </p>
+      )}
+      {(opp.import_requirements ?? []).length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Destination needs: <span className="text-foreground">{(opp.import_requirements ?? []).join(" · ")}</span>
+        </p>
+      )}
+      {opp.export_policy?.message && (
+        <p className="text-[11px] text-muted-foreground">
+          Export policy: <span className={cn(opp.export_policy.severity === "review" ? "text-[#f5a623]" : "text-foreground")}>{opp.export_policy.message}</span>
+          {opp.export_policy.destination_message && <> · {opp.export_policy.destination_message}</>}
+        </p>
       )}
       {opp.gap_note && (
         <p className="text-[11px] text-[#f5a623] flex items-start gap-1">
@@ -800,11 +946,13 @@ function ScanReportCard() {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-type SortBy = "profit" | "container" | "score" | "market";
+type SortBy = "profit" | "annual" | "container" | "urgent" | "score" | "market";
 
 const SORTS: { key: SortBy; label: string }[] = [
   { key: "profit", label: "Expected profit" },
+  { key: "annual", label: "Profit per year" },
   { key: "container", label: "Margin / container" },
+  { key: "urgent", label: "Time-sensitive" },
   { key: "score", label: "Market score" },
   { key: "market", label: "Market" },
 ];
@@ -812,6 +960,8 @@ const SORTS: { key: SortBy; label: string }[] = [
 function sortValue(o: Opportunity, by: SortBy): number {
   if (by === "profit") return o.profit?.expected_profit_usd ?? Number.NEGATIVE_INFINITY;
   if (by === "container") return o.profit?.margin_per_container_usd ?? Number.NEGATIVE_INFINITY;
+  if (by === "annual") return o.profit?.annual_potential_usd ?? Number.NEGATIVE_INFINITY;
+  if (by === "urgent") return (o.urgency_tier ?? 1) * 1000 + (o.active_rfq_count ?? 0) + (o.active_tender_count ?? 0);
   return o.arbitrage_rank;
 }
 
@@ -892,6 +1042,15 @@ export function OpportunityRadar() {
   }
 
   async function handleStartDeal(opp: Opportunity) {
+    const fails = (opp.readiness ?? []).filter((c) => c.status === "fail");
+    if (fails.length > 0) {
+      const ok = window.confirm(
+        "This prospect is not ready to start:\n\n" +
+          fails.map((c) => `• ${c.label}: ${c.detail}`).join("\n") +
+          "\n\nStart anyway?",
+      );
+      if (!ok) return;
+    }
     const running = opp.corridor_deals ?? [];
     if (running.length > 0) {
       const ok = window.confirm(
@@ -1104,6 +1263,7 @@ export function OpportunityRadar() {
                       </td>
                       <td className="px-3 py-3">
                         <HsCode code={opp.hs_code} className="font-mono font-bold text-sm" />
+                        <div className="mt-1"><ReadinessDots checks={opp.readiness} /></div>
                         <div className="mt-1"><FlagChips flags={opp.flags} skip={["no_supplier_price"]} /></div>
                       </td>
                       <td className="px-3 py-3">
@@ -1111,12 +1271,29 @@ export function OpportunityRadar() {
                         <p className="text-[10px] text-muted-foreground mt-0.5">
                           {timeAgo(opp.scanned_at)}{opp.expires_at ? ` · expires ${countdown(opp.expires_at)}` : ""}
                         </p>
+                        {(opp.urgency_tier ?? 1) >= 3 && (
+                          <span
+                            className={cn("inline-block mt-1 text-[9px] px-1.5 py-0.5 rounded border font-medium", TONE_STYLE.warn)}
+                            title={[
+                              opp.active_rfq_count ? `${opp.active_rfq_count} active RFQ(s)` : null,
+                              opp.active_tender_count ? `${opp.active_tender_count} tender(s)` : null,
+                              opp.urgency_tier === 4 ? "supply disruption at a competing origin" : null,
+                            ].filter(Boolean).join(" · ") || `urgency tier ${opp.urgency_tier}`}
+                          >
+                            time-sensitive · T{opp.urgency_tier}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <p className={cn("text-sm font-bold tabular-nums", (p?.expected_profit_usd ?? 0) > 0 ? "text-[#2ec28a]" : p?.expected_profit_usd != null ? "text-[#ff5d6c]" : "text-muted-foreground")}>
                           {fmtUsd0(p?.expected_profit_usd)}
                         </p>
                         {p?.p_close != null && <p className="text-[10px] text-muted-foreground">{(p.p_close * 100).toFixed(0)}% chance · {p.lot_mt} MT</p>}
+                        {p?.expected_profit_low_usd != null && p?.expected_profit_high_usd != null && (
+                          <p className="text-[10px] text-muted-foreground" title={p.range_basis ?? undefined}>
+                            {fmtUsd0(p.expected_profit_low_usd)} – {fmtUsd0(p.expected_profit_high_usd)}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-xs">
                         {p?.margin_usd_per_mt != null ? (
@@ -1139,6 +1316,7 @@ export function OpportunityRadar() {
                         </p>
                         <p className="text-[10px] text-muted-foreground truncate max-w-[170px]">
                           {p?.supplier_price_basis ? `supplier: ${p.supplier_price_basis.replace(/_/g, " ")}` : "no supplier price"}
+                          {opp.data_period ? ` · ${opp.data_period}` : ""}
                         </p>
                       </td>
                       <td className="px-3 py-3 text-xs">

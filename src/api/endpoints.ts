@@ -216,6 +216,9 @@ export const OpportunitiesApi = {
     worldwide_search?: boolean;
     product_names?: Record<string, string>;
   }) => api.post<Opportunity[]>("/trade-min/scan", payload, { timeout: 15 * 60 * 1000 }).then((r) => r.data),
+  // Record the export policy of an HS code checked against ITC-HS Schedule 2 (staff).
+  confirmHsPolicy: (hs: string, status: "free" | "restricted" | "prohibited", note: string) =>
+    api.put(`/deals/compliance/hs-policy/${hs}`, { status, note }).then((r) => r.data),
   // What the last scan did per product × market, with the reason a corridor was dropped.
   scanReport: () => api.get<ScanReport | null>("/trade-min/scan/report").then((r) => r.data),
   // The HS code picker: codes matching a code prefix or product words, with names.

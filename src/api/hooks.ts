@@ -364,6 +364,16 @@ export function useScanOpportunities() {
   });
 }
 
+/** Confirm an HS code's export policy from the radar (staff); the list re-reads it. */
+export function useConfirmHsPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hs, status, note }: { hs: string; status: "free" | "restricted" | "prohibited"; note: string }) =>
+      OpportunitiesApi.confirmHsPolicy(hs, status, note),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["opportunities"] }),
+  });
+}
+
 /** The last scan's per-corridor result: opportunity, or why it was dropped. */
 export function useScanReport() {
   return useQuery({

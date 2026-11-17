@@ -347,6 +347,8 @@ export interface Deal {
   /** Profit as % of the sale (PI) value, after PortLess's own costs. */
   est_margin_pct?: number | null;
   realized_margin_pct?: number | null;
+  /** The Opportunity Radar's numbers when the prospect started (kept unchanged). */
+  radar_estimate?: (Partial<OpportunityProfit> & { flags?: string[]; opportunity_id?: string; taken_at?: string }) | null;
   parties: Party[];
   // Trade-Min / Match Engine linkage (seeded at deal creation)
   opportunity_id?: string | null;
@@ -705,6 +707,23 @@ export interface Opportunity {
   profit?: OpportunityProfit | null;
   flags?: string[];
   corridor_deals?: { deal_id: string; status: string; opportunity_id?: string | null }[];
+  data_period?: string | null;
+  market_data_flags?: string[];
+  export_policy?: {
+    status?: string; severity?: "block" | "review" | "info"; message?: string;
+    destination_severity?: string | null; destination_message?: string | null;
+  } | null;
+  market_check?: { verdict?: "go" | "caution" | "avoid" | "unchecked"; summary?: string; checked_at?: string | null } | null;
+  import_requirements?: string[];
+  scan_cost?: { runs: number; usd: number } | null;
+  readiness?: ReadinessCheck[];
+}
+
+export interface ReadinessCheck {
+  key: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
 }
 
 export interface OpportunityProfit {
@@ -727,6 +746,23 @@ export interface OpportunityProfit {
   estimated: boolean;
   meets_floor?: boolean | null;
   margin_floor_pct?: number | null;
+  expected_profit_low_usd?: number | null;
+  expected_profit_high_usd?: number | null;
+  range_basis?: string | null;
+  incentive_usd_per_mt?: number | null;
+  incentive_basis?: string | null;
+  freight_basis?: string | null;
+  container_type?: string;
+  supplier_price_low_usd_per_mt?: number | null;
+  supplier_price_high_usd_per_mt?: number | null;
+  usd_inr?: number | null;
+  usd_inr_source?: string | null;
+  mandi_trend?: { direction: "rising" | "falling" | "flat"; change_pct: number; days: number; points: number; advice: string } | null;
+  annual_potential_usd?: number | null;
+  annual_basis?: string | null;
+  correction_factor?: number | null;
+  correction_basis?: string | null;
+  missing?: { what: string; how: string; action: string }[];
 }
 
 // GET /trade-min/scan/report — what the last scan did per product × market.

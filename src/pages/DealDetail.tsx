@@ -93,6 +93,7 @@ import {
 } from "@/components/ui/dialog";
 import type {
   QcRecord,
+  Deal,
   FreightRecord,
   Party,
   EscrowRecord,
@@ -100,6 +101,7 @@ import type {
   UpdatePartyRequest,
 } from "@/api/types";
 import { HsCode } from "@/components/HsCode";
+import { CorridorFacts, FlagChips, ProfitPanel } from "@/pages/OpportunityRadar";
 
 const NEGOTIATION_TERMINAL = new Set(["AGREED", "FAILED", "ESCALATED"]);
 
@@ -328,6 +330,11 @@ function OriginOpportunityCard({
             ))}
           </div>
         )}
+
+        {/* Why the deal was started: the radar's flags, profit breakdown and market */}
+        {(opp.flags ?? []).length > 0 && <FlagChips flags={opp.flags} />}
+        <ProfitPanel opp={opp} />
+        <CorridorFacts opp={opp} />
 
         {/* Buyer signals — the buyers' initial (pre-negotiation) prices */}
         {(opp.buyer_signals?.length ?? 0) > 0 && (
@@ -824,6 +831,43 @@ function ProfitBreakdown({ dealId }: { dealId: string }) {
   );
 }
 
+/** The radar's estimate when the prospect started → the negotiated margin → the realised
+ *  margin, side by side (the radar learns from the gap: trade_min accuracy.py). */
+function RadarEstimateCard({ deal }: { deal: Deal }) {
+  const est = deal.radar_estimate;
+  if (!est) return null;
+  const qty = deal.quantity_mt ?? est.lot_mt ?? null;
+  const estimated = est.margin_usd_per_mt != null && qty ? est.margin_usd_per_mt * qty : null;
+  const cell = (label: string, value: number | null | undefined, sub: string) => (
+    <div className="rounded-lg bg-secondary border border-border p-2.5">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold">{fmtUSD(value ?? null)}</p>
+      <p className="text-[10px] text-muted-foreground">{sub}</p>
+    </div>
+  );
+  return (
+    <Card>
+      <CardHeader className="pb-1">
+        <CardTitle className="text-sm">Radar estimate → negotiated → realised</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Taken {est.taken_at ? timeAgo(est.taken_at) : "at start"} · buyer price from {est.buyer_price_basis ?? "—"},
+          supplier price from {est.supplier_price_basis ?? "—"}
+          {est.expected_profit_usd != null && ` · expected profit ${fmtUSD(est.expected_profit_usd)} at ${((est.p_close ?? 0) * 100).toFixed(0)}% chance`}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {cell("Radar estimate", estimated,
+            est.margin_usd_per_mt != null ? `${fmtUSD(est.margin_usd_per_mt)}/MT × ${qty ?? "—"} MT` : "no margin estimate")}
+          {cell("Negotiated (est. margin)", deal.est_margin_usd, deal.est_margin_pct != null ? fmtPct(deal.est_margin_pct) : "after the agreement")}
+          {cell("Realised", deal.realized_margin_usd, deal.realized_margin_pct != null ? fmtPct(deal.realized_margin_pct) : "at settlement")}
+        </div>
+        {(est.flags ?? []).length > 0 && <FlagChips flags={est.flags} />}
+      </CardContent>
+    </Card>
+  );
+}
+
 function OverviewTab({ dealId }: { dealId: string }) {
   const { data: deal } = useDeal(dealId);
   const { data: matchScore, isLoading: scoreLoading } = useMatchScore(dealId);
@@ -910,6 +954,8 @@ function OverviewTab({ dealId }: { dealId: string }) {
       </div>
 
       <ProfitBreakdown dealId={dealId} />
+
+      <RadarEstimateCard deal={deal} />
 
       {/* Buyer outreach funnel — every identified buyer, contacted in order
           until one says yes; the negotiation waits for that reply. */}
