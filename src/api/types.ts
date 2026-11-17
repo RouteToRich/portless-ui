@@ -974,6 +974,16 @@ export interface CounterpartyProfile {
   blocked_reason?: string | null;
 }
 
+// GET /trade-min/directory/{buyers|suppliers}/page — one page of the directory with the total.
+export interface DirectoryPage {
+  items: Counterparty[];
+  total: number;
+  offset: number;
+  limit: number;
+  sort: string;
+  order: "asc" | "desc";
+}
+
 // GET /trade-min/directory/summary — the book at a glance.
 export interface DirectoryRoleSummary {
   total: number;

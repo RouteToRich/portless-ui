@@ -53,6 +53,7 @@ import type {
   ProspectSummary,
   CounterpartyProfile,
   DirectorySummary,
+  DirectoryPage,
   Organization,
   QcRecord,
   ReadinessReport,
@@ -251,7 +252,8 @@ export interface CounterpartyFilters {
   stage?: string;
   /** Only companies outreach may write to. */
   contactable?: boolean;
-  sort?: "recent" | "score";
+  sort?: string;
+  order?: "asc" | "desc";
 }
 
 // Every buyer / supplier a scan found — with or without an opportunity or deal.
@@ -276,6 +278,13 @@ export const CounterpartiesApi = {
   addToProspect: (role: "buyer" | "supplier", id: string, dealId: string) =>
     api.post<{ deal_id: string; added: string; next: string }>(
       `/trade-min/${role}s/${encodeURIComponent(id)}/add-to-prospect`, { deal_id: dealId }).then((r) => r.data),
+  /** One page of the directory with the total (sorted and filtered over the whole directory). */
+  page: (role: "buyer" | "supplier", filters: CounterpartyFilters & { offset?: number; limit?: number } = {}) =>
+    api
+      .get<DirectoryPage>(`/trade-min/directory/${role}s/page`, {
+        params: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")),
+      })
+      .then((r) => r.data),
   /** The book at a glance. */
   summary: () => api.get<DirectorySummary>("/trade-min/directory/summary").then((r) => r.data),
   /** Store the current clean-up (names, roles) on every directory record (staff). */

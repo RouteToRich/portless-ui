@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE_PATH, SESSION_EVENT, TOKEN_KEY } from "./client";
 import { isAutomationMode } from "@/lib/automationMode";
 import {
@@ -450,6 +450,21 @@ export function useAddToProspect() {
       qc.invalidateQueries({ queryKey: ["deals"] });
       qc.invalidateQueries({ queryKey: ["prospect-desk"] });
     },
+  });
+}
+
+/** One page of the directory with the total; the previous page stays on screen while the next loads. */
+export function useDirectoryPage(
+  role: "buyer" | "supplier",
+  filters: CounterpartyFilters & { offset?: number; limit?: number },
+  options: { live?: boolean; enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: ["counterparties", "page", role, filters],
+    queryFn: () => CounterpartiesApi.page(role, filters),
+    placeholderData: keepPreviousData,
+    refetchInterval: options.live ? 10_000 : false,
+    enabled: options.enabled ?? true,
   });
 }
 

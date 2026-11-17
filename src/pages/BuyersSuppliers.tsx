@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Ban, Factory, Globe, LayoutGrid, List, Mail, Phone, RefreshCw, Search, Sparkles, Users, Zap } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Ban, ChevronLeft, ChevronRight, Factory, Globe, LayoutGrid, List, Mail, Phone, RefreshCw, Search, Sparkles, Users, Zap } from "lucide-react";
 import { BookSummary, CompanyCard, CompanyProfileSheet } from "@/components/directory/CompanyViews";
 import { cn, fmtDateTime, timeAgo } from "@/lib/utils";
 import {
@@ -10,7 +10,7 @@ import {
   useCatalogue,
   useCleanDirectory,
   useContactPreference,
-  useCounterparties,
+  useDirectoryPage,
   useScanOpportunities,
   useTradeSources,
   useValidateCounterparty,
@@ -347,6 +347,21 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
   );
 }
 
+export const SORT_OPTIONS: { value: string; label: string; order: "asc" | "desc" }[] = [
+  { value: "score", label: "Best first (score)", order: "desc" },
+  { value: "activity", label: "Last activity", order: "desc" },
+  { value: "stage", label: "Relationship stage", order: "desc" },
+  { value: "added", label: "Newly found", order: "desc" },
+  { value: "recent", label: "Last seen in a scan", order: "desc" },
+  { value: "name", label: "Name A–Z", order: "asc" },
+  { value: "country", label: "Country", order: "asc" },
+  { value: "fit", label: "Fit score", order: "desc" },
+  { value: "price", label: "Price (target / quote)", order: "asc" },
+  { value: "seen", label: "Times found", order: "desc" },
+];
+
+const PAGE_SIZES = [30, 60, 120, 240];
+
 function RolePanel({
   role,
   q,
@@ -358,6 +373,7 @@ function RolePanel({
   stage,
   contactable,
   sort,
+  order,
   view,
   onOpen,
 }: {
@@ -370,11 +386,16 @@ function RolePanel({
   live: boolean;
   stage: string;
   contactable: boolean;
-  sort: "recent" | "score";
+  sort: string;
+  order: "asc" | "desc";
   view: "cards" | "table";
   onOpen: (id: string) => void;
 }) {
-  const { data, isLoading, isError, refetch } = useCounterparties(
+  const [pageSize, setPageSize] = useState(60);
+  const [page, setPage] = useState(0);
+  const filterKey = [q, market, hs, country, check, stage, contactable, sort, order, pageSize].join("|");
+  useEffect(() => setPage(0), [filterKey]);
+  const { data, isLoading, isError, refetch, isFetching } = useDirectoryPage(
     role,
     {
       q: q.trim() || undefined,
@@ -385,10 +406,17 @@ function RolePanel({
       stage: stage || undefined,
       contactable: contactable || undefined,
       sort,
+      order,
+      offset: page * pageSize,
+      limit: pageSize,
     },
     { live }
   );
-  const rows = data ?? [];
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total ? page * pageSize + 1 : 0;
+  const to = Math.min(total, (page + 1) * pageSize);
   const withEmail = rows.filter((r) => r.email).length;
   const engaged = rows.filter((r) => ["replied", "interested", "quoted", "in_deal", "traded"].includes(r.relationship?.stage ?? "")).length;
   const dnc = rows.filter((r) => r.do_not_contact).length;
@@ -430,16 +458,45 @@ function RolePanel({
   }
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-muted-foreground">
-        {rows.length} {role === "buyer" ? "buyers" : "suppliers"} · {withEmail} with an e-mail · {engaged} engaged
-        {dnc > 0 && ` · ${dnc} do not contact`}
-      </p>
+<div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+        <span>
+          Showing <b className="text-foreground">{from}–{to}</b> of <b className="text-foreground">{total}</b> {role === "buyer" ? "buyers" : "suppliers"}
+          {" · "}on this page {withEmail} with an e-mail · {engaged} engaged{dnc > 0 && ` · ${dnc} do not contact`}
+        </span>
+        {isFetching && <RefreshCw className="w-3 h-3 animate-spin" />}
+        <span className="ml-auto flex items-center gap-1.5">
+          <select className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px]" value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))} aria-label="Per page">
+            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n} per page</option>)}
+          </select>
+          <Button size="sm" variant="outline" className="h-7 px-2" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Previous page">
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </Button>
+          <span className="tabular-nums">page {page + 1} of {pages}</span>
+          <Button size="sm" variant="outline" className="h-7 px-2" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)} aria-label="Next page">
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Button>
+        </span>
+      </div>
       {view === "cards" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {rows.map((c) => <CompanyCard key={c.id} role={role} c={c} onOpen={() => onOpen(c.id)} />)}
         </div>
       ) : (
         <CounterpartyTable role={role} rows={rows} />
+      )}
+      {pages > 1 && (
+        <div className="flex justify-center items-center gap-2 pt-2 text-[11px] text-muted-foreground">
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={page === 0}
+            onClick={() => { setPage(page - 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <ChevronLeft className="w-3.5 h-3.5" /> Previous
+          </Button>
+          <span className="tabular-nums">{from}–{to} of {total}</span>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={page + 1 >= pages}
+            onClick={() => { setPage(page + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            Next <ChevronRight className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -454,7 +511,8 @@ export function BuyersSuppliers() {
   const [check, setCheck] = useState<ValidationStatus | "">("");
   const [stage, setStage] = useState("");
   const [contactable, setContactable] = useState(false);
-  const [sort, setSort] = useState<"recent" | "score">("score");
+  const [sort, setSort] = useState("score");
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
   const [openId, setOpenId] = useState<string | null>(null);
   const clean = useCleanDirectory();
@@ -466,13 +524,14 @@ export function BuyersSuppliers() {
   // true while a scan runs — started here or on the Opportunity Radar
   const scanning = useIsMutating({ mutationKey: ["scan"] }) > 0;
   const { data: sourcesInfo } = useTradeSources();
-  const { data: buyers } = useCounterparties("buyer", {}, { live: scanning });
-  const { data: suppliers } = useCounterparties("supplier", {}, { live: scanning });
+  // Totals from the paged endpoint (limit 1): the plain list stops at 200 companies.
+  const { data: buyersPage } = useDirectoryPage("buyer", { limit: 1 }, { live: scanning });
+  const { data: suppliersPage } = useDirectoryPage("supplier", { limit: 1 }, { live: scanning });
   // While an HS code is chosen (a product search, or the HS filter), the counters count
   // that product only — they start at 0 for a new search and rise as companies are found.
   const hsFilter = hs.trim();
-  const { data: hsBuyers } = useCounterparties("buyer", { hs_code: hsFilter }, { live: scanning, enabled: !!hsFilter });
-  const { data: hsSuppliers } = useCounterparties("supplier", { hs_code: hsFilter }, { live: scanning, enabled: !!hsFilter });
+  const { data: hsBuyersPage } = useDirectoryPage("buyer", { hs_code: hsFilter, limit: 1 }, { live: scanning, enabled: !!hsFilter });
+  const { data: hsSuppliersPage } = useDirectoryPage("supplier", { hs_code: hsFilter, limit: 1 }, { live: scanning, enabled: !!hsFilter });
 
   // "Find buyers & suppliers for a product": an HS code picked by product name, the name the
   // Apify search uses (editable), and the markets — one scan for just that product.
@@ -516,6 +575,7 @@ export function BuyersSuppliers() {
         description: `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} · the buyers and suppliers found are listed below, best first; "Last search" says what each market returned`,
       });
       setSort("score");
+      setOrder("desc");
     } catch {
       toast.warning("The search is still running on the server", {
         description: "Companies found so far are listed; use Refresh to load more.",
@@ -651,9 +711,9 @@ export function BuyersSuppliers() {
           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             {scanning && <RefreshCw className="w-3 h-3 animate-spin" />}
             {hsFilter
-              ? <>Found for HS {hsFilter}: <b className="text-foreground">{hsBuyers?.length ?? 0}</b> buyers · <b className="text-foreground">{hsSuppliers?.length ?? 0}</b> suppliers
-                  <span>({buyers?.length ?? 0} buyers · {suppliers?.length ?? 0} suppliers in the whole directory)</span></>
-              : <>Directory: <b className="text-foreground">{buyers?.length ?? 0}</b> buyers · <b className="text-foreground">{suppliers?.length ?? 0}</b> suppliers</>}
+              ? <>Found for HS {hsFilter}: <b className="text-foreground">{hsBuyersPage?.total ?? 0}</b> buyers · <b className="text-foreground">{hsSuppliersPage?.total ?? 0}</b> suppliers
+                  <span>({buyersPage?.total ?? 0} buyers · {suppliersPage?.total ?? 0} suppliers in the whole directory)</span></>
+              : <>Directory: <b className="text-foreground">{buyersPage?.total ?? 0}</b> buyers · <b className="text-foreground">{suppliersPage?.total ?? 0}</b> suppliers</>}
           </p>
           {pick && (
             <p className="text-[11px] text-muted-foreground">
@@ -763,15 +823,26 @@ export function BuyersSuppliers() {
                 >
                   Contactable
                 </Button>
-                <select
-                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as "recent" | "score")}
-                  aria-label="Sort"
-                >
-                  <option value="score">Best first (score)</option>
-                  <option value="recent">Newest first</option>
-                </select>
+                <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Sort">
+                  <select
+                    className="h-8 bg-background px-2 text-xs border-0 outline-none"
+                    value={sort}
+                    onChange={(e) => {
+                      const opt = SORT_OPTIONS.find((o) => o.value === e.target.value);
+                      setSort(e.target.value);
+                      if (opt) setOrder(opt.order);
+                    }}
+                    aria-label="Sort by"
+                  >
+                    {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setOrder(order === "asc" ? "desc" : "asc")}
+                    className="h-8 px-2 border-l border-border text-muted-foreground hover:bg-secondary"
+                    title={order === "asc" ? "Ascending — click for descending" : "Descending — click for ascending"}
+                    aria-label="Sort direction">
+                    {order === "asc" ? <ArrowUpNarrowWide className="w-3.5 h-3.5" /> : <ArrowDownWideNarrow className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
                 <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="View">
                   <button type="button" onClick={() => setView("cards")} aria-pressed={view === "cards"} title="Cards"
                     className={cn("h-8 px-2.5", view === "cards" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary")}>
@@ -789,11 +860,11 @@ export function BuyersSuppliers() {
             </div>
             <TabsContent value="buyer" className="mt-3">
               <RolePanel role="buyer" q={q} market={market} hs={hs} country={country} check={check} live={scanning}
-                         stage={stage} contactable={contactable} sort={sort} view={view} onOpen={setOpenId} />
+                         stage={stage} contactable={contactable} sort={sort} order={order} view={view} onOpen={setOpenId} />
             </TabsContent>
             <TabsContent value="supplier" className="mt-3">
               <RolePanel role="supplier" q={q} market={market} hs={hs} country={country} check={check} live={scanning}
-                         stage={stage} contactable={contactable} sort={sort} view={view} onOpen={setOpenId} />
+                         stage={stage} contactable={contactable} sort={sort} order={order} view={view} onOpen={setOpenId} />
             </TabsContent>
           </Tabs>
         </CardContent>
