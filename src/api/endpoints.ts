@@ -106,6 +106,13 @@ export const MatchApi2 = {
   board: (dealId: string) => api.get<MatchBoard>(`/deals/${dealId}/match-board`).then((r) => r.data),
   // Every open prospect: worth, whose move, next moves (shared/orchestration/prospect_desk.py).
   desk: () => api.get<ProspectSummary[]>("/deals/prospects/desk", { timeout: 60_000 }).then((r) => r.data),
+  // Park (no reminders, record kept) / unpark / drop (CANCELLED with the reason) a prospect.
+  park: (dealId: string, reason: string, until?: string) =>
+    api.post(`/deals/${dealId}/prospect/park`, { reason, until: until || null }).then((r) => r.data),
+  unpark: (dealId: string) => api.post(`/deals/${dealId}/prospect/unpark`).then((r) => r.data),
+  // Re-send now every outreach / RFQ e-mail that failed in transport (tries left).
+  retrySends: (dealId: string) => api.post<Record<string, number>>(`/deals/${dealId}/retry-sends`).then((r) => r.data),
+  drop: (dealId: string, reason: string) => api.post(`/deals/${dealId}/prospect/drop`, { reason }).then((r) => r.data),
   evaluate: (dealId: string) => api.post(`/deals/${dealId}/match/evaluate`).then((r) => r.data),
   indicativeOffer: (dealId: string, candidateId: string, offerId: string) =>
     api.post<{ approval_id: string }>(`/deals/${dealId}/match/indicative-offer`, { candidate_id: candidateId, offer_id: offerId })
@@ -138,6 +145,8 @@ export const SourcingApi = {
 };
 
 export const DealsApi = {
+  /** USD/INR the console shows beside USD supplier prices (source live / fallback). */
+  usdInr: () => api.get<{ currency: string; rate: number | null; source: string }>("/deals/fx/usd-inr").then((r) => r.data),
   list: (status?: string) =>
     api.get<Deal[]>("/deals", { params: status ? { status } : undefined }).then((r) => r.data),
   get: (dealId: string) => api.get<Deal>(`/deals/${dealId}`).then((r) => r.data),

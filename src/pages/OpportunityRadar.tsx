@@ -403,6 +403,12 @@ function PairRow({ p }: { p: PairMatch }) {
         {p.recommended && (
           <Badge variant="success" className="text-[9px] h-4 px-1.5 shrink-0">Recommended</Badge>
         )}
+        {p.verified === false && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded border border-[#f5a623]/40 text-[#f5a623] shrink-0"
+            title={`Not verified: ${(p.unverified_sides ?? []).join(" and ") || "a side"} — run the check before relying on this pair`}>
+            unverified {(p.unverified_sides ?? []).join(" + ")}
+          </span>
+        )}
         {p.margin_pct != null && (
           <span className="text-[11px] text-muted-foreground shrink-0 hidden sm:inline" title="Margin after landed cost">
             {p.margin_pct.toFixed(1)}% margin
@@ -1338,6 +1344,9 @@ export function OpportunityRadar() {
                           <div className="text-xs" title={`${best.buyer_name} ⇄ ${best.seller_name}`}>
                             <span className="font-bold tabular-nums mr-1.5">{best.score.toFixed(0)}</span>
                             <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", GRADE_STYLE[best.grade])}>{best.grade}</span>
+                            {best.verified === false && (
+                              <span className="ml-1 text-[9px] text-[#f5a623]" title="No pair with both sides verified yet">unverified</span>
+                            )}
                           </div>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>

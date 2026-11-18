@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { StreamBanner } from "@/components/StreamBanner";
 
 
 function actionLabel(action: string): string {
@@ -114,7 +115,7 @@ function ApprovalRow({ approval, isSelected, onClick }: ApprovalRowProps) {
 
 export function ApprovalsInbox() {
   const { data: approvals, isLoading, isError, refetch } = useApprovals();
-  const { connected } = useApprovalStream();
+  const { connected, lostSince, attempts, reconnect } = useApprovalStream();
   const [selected, setSelected] = useState<ApprovalRecord | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"ALL" | "PENDING" | "RESOLVED">("ALL");
@@ -203,6 +204,7 @@ export function ApprovalsInbox() {
           Refresh
         </Button>
       </div>
+      <StreamBanner lostSince={lostSince} attempts={attempts} onReconnect={reconnect} />
 
       <div className="flex flex-col md:flex-row gap-3 flex-1 min-h-0">
         {/* ── Left pane: list ── */}

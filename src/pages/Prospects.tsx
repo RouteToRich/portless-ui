@@ -3,7 +3,9 @@ import {
   AlertTriangle, ArrowRight, CheckCircle2, Clock, Factory, Hourglass, Search, Target, Telescope, TrendingUp, Users,
 } from "lucide-react";
 import { useState } from "react";
-import { useDealQuotes, useDealRfqs, useDeals, useProspectDesk } from "@/api/hooks";
+import { useDealQuotes, useDealRfqs, useDeals, useProspectControl, useProspectDesk, useUsdInr } from "@/api/hooks";
+import { inr, rateTitle } from "@/lib/fx";
+import { toast } from "sonner";
 import type { Deal, DeskAction, ProspectSummary } from "@/api/types";
 import { cn, timeAgo } from "@/lib/utils";
 import { hasUndeliveredMail, isProspect, notDelivered, prospectNextStep } from "@/lib/prospect";
@@ -34,6 +36,7 @@ const ACTION_TONE: Record<string, string> = {
   best_and_final: "text-[#4f8cff]",
   send_offer: "text-[#4f8cff]",
   reconfirm_quote: "text-[#f5a623]",
+  unpark: "text-muted-foreground",
 };
 
 function usd0(n: number | null | undefined): string {
@@ -102,9 +105,68 @@ function Actions({ actions }: { actions: DeskAction[] }) {
   );
 }
 
+/** Park / Unpark / Drop — real actions on the row (the row itself opens the prospect). */
+function ProspectControls({ dealId, parked, canRetry }: { dealId: string; parked: boolean; canRetry: boolean }) {
+  const ctl = useProspectControl();
+  const busy = ctl.park.isPending || ctl.unpark.isPending || ctl.drop.isPending || ctl.retrySends.isPending;
+  const run = async (e: React.SyntheticEvent, what: "park" | "unpark" | "drop" | "retry") => {
+    e.stopPropagation();
+    if (busy) return;
+    try {
+      if (what === "retry") {
+        const r = await ctl.retrySends.mutateAsync(dealId);
+        const n = (r.outreach_retried ?? 0) + (r.rfq_retried ?? 0);
+        toast.success(n ? `${n} e-mail${n === 1 ? "" : "s"} sent again` : "Nothing to retry (no tries left, or no transport failure)");
+        return;
+      }
+      if (what === "unpark") {
+        await ctl.unpark.mutateAsync(dealId);
+        toast.success("Prospect unparked — reminders run again");
+        return;
+      }
+      const reason = window.prompt(what === "park"
+        ? "Park: why? (reminders stop, the record stays)"
+        : "Drop: why? The prospect closes as cancelled and its open gates close.");
+      if (!reason || reason.trim().length < 3) return;
+      let until: string | undefined;
+      if (what === "park") {
+        const days = window.prompt("Park for how many days? (empty = until you unpark it)", "");
+        const n = Number(days);
+        if (days && Number.isFinite(n) && n > 0) until = new Date(Date.now() + n * 86_400_000).toISOString();
+        await ctl.park.mutateAsync({ dealId, reason: reason.trim(), until });
+        toast.success(until ? `Parked until ${new Date(until).toLocaleDateString()}` : "Parked");
+      } else {
+        await ctl.drop.mutateAsync({ dealId, reason: reason.trim() });
+        toast.success("Prospect dropped");
+      }
+    } catch (err) {
+      toast.error("Not done", { description: err instanceof Error ? err.message : String(err) });
+    }
+  };
+  const btn = "text-[11px] px-2 py-0.5 rounded-md border border-border hover:border-primary/50 cursor-pointer";
+  const keys = (what: "park" | "unpark" | "drop" | "retry") => (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") run(e, what);
+  };
+  return (
+    <span className="flex items-center gap-1.5 shrink-0" data-testid={`prospect-controls-${dealId}`}>
+      {canRetry && (
+        <span role="button" tabIndex={0} className={cn(btn, "text-[#4f8cff]")} onClick={(e) => run(e, "retry")} onKeyDown={keys("retry")}
+          title="Send again every introduction / quote request that failed in transport">Retry sends</span>
+      )}
+      {parked ? (
+        <span role="button" tabIndex={0} className={btn} onClick={(e) => run(e, "unpark")} onKeyDown={keys("unpark")}>Unpark</span>
+      ) : (
+        <span role="button" tabIndex={0} className={cn(btn, "text-[#f5a623]")} onClick={(e) => run(e, "park")} onKeyDown={keys("park")}>Park</span>
+      )}
+      <span role="button" tabIndex={0} className={cn(btn, "text-[#ff5d6c]")} onClick={(e) => run(e, "drop")} onKeyDown={keys("drop")}>Drop</span>
+    </span>
+  );
+}
+
 function ProspectRow({ deal, desk, onOpen }: { deal: Deal; desk?: ProspectSummary; onOpen: () => void }) {
   const { data: rfqs } = useDealRfqs(deal.deal_id);
   const { data: quotes } = useDealQuotes(deal.deal_id);
+  const { data: fx } = useUsdInr();
   const cands = deal.buyer_candidates ?? [];
   const counts = new Map<string, number>();
   for (const c of cands) {
@@ -141,6 +203,11 @@ function ProspectRow({ deal, desk, onOpen }: { deal: Deal; desk?: ProspectSummar
           )}
           {desk?.stalled && (
             <Badge variant="warning" className="text-[10px] gap-1"><Hourglass className="w-3 h-3" /> stalled</Badge>
+          )}
+          {desk?.parked && (
+            <Badge variant="secondary" className="text-[10px]" title={desk.parked_reason ?? undefined}>
+              parked{desk.parked_until ? ` until ${new Date(desk.parked_until).toLocaleDateString()}` : ""}
+            </Badge>
           )}
           {undelivered && (
             <Badge variant="warning" className="text-[10px] gap-1">
@@ -191,8 +258,8 @@ function ProspectRow({ deal, desk, onOpen }: { deal: Deal; desk?: ProspectSummar
           <div className="flex gap-1.5 flex-wrap">
             <Badge variant="secondary" className="text-[10px]">{quotes?.length ?? 0} quoted</Badge>
             {desk?.best_quote_usd_per_mt != null && (
-              <Badge variant="secondary" className="text-[10px]" title="Lowest valid supplier FOB — leverage on the others">
-                best {usd0(desk.best_quote_usd_per_mt)} FOB{desk.quote_spread_pct != null ? ` · spread ${desk.quote_spread_pct.toFixed(0)}%` : ""}
+              <Badge variant="secondary" className="text-[10px]" title={`Lowest valid supplier FOB — leverage on the others${rateTitle(fx?.rate, fx?.source) ? `. ${rateTitle(fx?.rate, fx?.source)}` : ""}`}>
+                best {usd0(desk.best_quote_usd_per_mt)} FOB{inr(desk.best_quote_usd_per_mt, fx?.rate) ? ` (${inr(desk.best_quote_usd_per_mt, fx?.rate)})` : ""}{desk.quote_spread_pct != null ? ` · spread ${desk.quote_spread_pct.toFixed(0)}%` : ""}
               </Badge>
             )}
             {(desk?.quotes_expired ?? 0) > 0 && <Badge variant="warning" className="text-[10px]">{desk?.quotes_expired} expired</Badge>}
@@ -209,6 +276,7 @@ function ProspectRow({ deal, desk, onOpen }: { deal: Deal; desk?: ProspectSummar
             <span className="text-xs text-muted-foreground">{prospectNextStep(deal, quotes?.length ?? 0)}</span>
           )}
         </div>
+        <ProspectControls dealId={deal.deal_id} parked={Boolean(desk?.parked)} canRetry={failedSends > 0 || undeliveredRfq > 0} />
         <span className="flex items-center gap-1 text-primary text-xs shrink-0">Open <ArrowRight className="w-3 h-3" /></span>
       </div>
     </button>

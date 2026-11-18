@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Mail, Send, SkipForward, UserPlus, Hourglass, Globe, Phone } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import { useOutreach } from "@/api/hooks";
+import { CheckChip } from "@/components/CheckChip";
 import type { BuyerCandidate, Deal } from "@/api/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -225,6 +226,7 @@ export function OutreachPanel({ deal }: { deal: Deal }) {
                         <p className="text-sm font-medium">{c.legal_name}</p>
                         <span className="text-[10px] font-mono text-muted-foreground">{c.country}</span>
                         <Badge variant={meta.variant} className="text-[10px]">{meta.label}</Badge>
+                        <CheckChip status={c.validation_status} />
                         {c.fit_score != null && (
                           <span className="text-[10px] text-muted-foreground">fit {c.fit_score}</span>
                         )}

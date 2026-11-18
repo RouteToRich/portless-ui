@@ -125,6 +125,9 @@ export interface MatchResult {
   decision: "SOURCE" | "DISCARD";
   fob_price_usd?: number | null;
   supplier_to_port_km?: number | null;
+  // Scan-time check of this supplier (trade_min/validation.py) and why.
+  verification?: "verified" | "unverified" | "failed";
+  verification_reasons?: string[];
 }
 
 export type BuyerCandidateStatus =
@@ -148,6 +151,8 @@ export interface BuyerCandidate {
   phone?: string | null;
   source?: string | null;
   fit_score?: number | null;
+  /** Scan-time check of this buyer (failed ones are never candidates). */
+  validation_status?: "verified" | "unverified" | "failed" | null;
   pitch_angle?: string | null;
   quantity_mt?: number | null;
   status: BuyerCandidateStatus | string;
@@ -363,6 +368,10 @@ export interface ProspectSummary {
   supplier_cut_needed_usd_per_mt?: number | null;
   radar_expected_profit_usd?: number | null;
   radar_margin_usd_per_mt?: number | null;
+  // Parked from the desk: no reminders until unparked (or parked_until passes).
+  parked?: boolean;
+  parked_until?: string | null;
+  parked_reason?: string | null;
   priority: number;
   actions: DeskAction[];
 }
@@ -682,6 +691,9 @@ export interface PairMatch {
   blockers: string[];
   improve: string[];
   recommended: boolean;
+  /** Both sides passed the counterparty check (verified pairs rank first). */
+  verified?: boolean;
+  unverified_sides?: string[];
 }
 
 export interface BuyerSignal {
@@ -739,6 +751,8 @@ export interface Opportunity {
   // Buyer × seller pair matching (backend services/trade_min/pair_match.py)
   pair_matches?: PairMatch[];
   best_match_score?: number | null;
+  /** The best-match score comes from a fully verified pair. */
+  best_match_verified?: boolean | null;
   // Enrichment fields returned by GET /trade-min/opportunities (EnrichedOpportunity)
   currency?: string | null;
   scanned_at?: string | null;

@@ -96,6 +96,11 @@ export function useMatchBoard(dealId: string | undefined, enabled = true) {
   });
 }
 
+/** USD/INR for showing an Indian supplier's INR figure beside the USD price (hourly). */
+export function useUsdInr() {
+  return useQuery({ queryKey: ["fx", "usd-inr"], queryFn: () => DealsApi.usdInr(), staleTime: 3_600_000 });
+}
+
 /** The prospect desk: every open prospect with its worth, whose move it is and the next moves. */
 export function useProspectDesk() {
   return useQuery({
@@ -103,6 +108,23 @@ export function useProspectDesk() {
     queryFn: () => MatchApi2.desk(),
     refetchInterval: 60000,
   });
+}
+
+/** Park / unpark / drop a prospect from the desk. */
+export function useProspectControl() {
+  const qc = useQueryClient();
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["prospect-desk"] });
+    qc.invalidateQueries({ queryKey: ["deals"] });
+  };
+  return {
+    park: useMutation({ mutationFn: ({ dealId, reason, until }: { dealId: string; reason: string; until?: string }) =>
+      MatchApi2.park(dealId, reason, until), onSuccess: done }),
+    unpark: useMutation({ mutationFn: (dealId: string) => MatchApi2.unpark(dealId), onSuccess: done }),
+    retrySends: useMutation({ mutationFn: (dealId: string) => MatchApi2.retrySends(dealId), onSuccess: done }),
+    drop: useMutation({ mutationFn: ({ dealId, reason }: { dealId: string; reason: string }) =>
+      MatchApi2.drop(dealId, reason), onSuccess: done }),
+  };
 }
 
 export function useMatchActions(dealId: string) {
@@ -537,6 +559,11 @@ export function useResolveApproval() {
 export function useApprovalStream() {
   const [events, setEvents] = useState<ApprovalRecord[]>([]);
   const [connected, setConnected] = useState(false);
+  // Reconnect banner: the stream was live and dropped (or never came up) — how many tries
+  // since, and a way to try again now.
+  const [lostSince, setLostSince] = useState<number | null>(null);
+  const [attempts, setAttempts] = useState(0);
+  const [nonce, setNonce] = useState(0);
   const qc = useQueryClient();
   // The one call that does NOT go through the gateway: a serverless gateway
   // cannot hold a stream open, so the stream is opened against the backend
@@ -559,7 +586,11 @@ export function useApprovalStream() {
       if (!token) return;
       es = new EventSource(`${baseURL}/hitl-approval/stream?token=${encodeURIComponent(token)}`);
 
-      es.onopen = () => setConnected(true);
+      es.onopen = () => {
+        setConnected(true);
+        setLostSince(null);
+        setAttempts(0);
+      };
 
       es.onmessage = (e) => {
         try {
@@ -581,6 +612,8 @@ export function useApprovalStream() {
 
       es.onerror = () => {
         setConnected(false);
+        setLostSince((s) => s ?? Date.now());
+        setAttempts((n) => n + 1);
         es?.close();
         clearTimeout(retryTimeout);
         retryTimeout = setTimeout(connect, 5000);
@@ -601,9 +634,9 @@ export function useApprovalStream() {
       es?.close();
       clearTimeout(retryTimeout);
     };
-  }, [baseURL, qc]);
+  }, [baseURL, qc, nonce]);
 
-  return { events, connected };
+  return { events, connected, lostSince, attempts, reconnect: () => setNonce((n) => n + 1) };
 }
 
 // ── Exceptions ───────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Scale, RefreshCw, Send, Handshake, Pencil, Plus, AlertTriangle, StickyNote } from "lucide-react";
-import { useAddKnowledgeNote, useKnowledgeSearch, useMatchActions, useMatchBoard } from "@/api/hooks";
+import { useAddKnowledgeNote, useKnowledgeSearch, useMatchActions, useMatchBoard, useUsdInr } from "@/api/hooks";
+import { inr } from "@/lib/fx";
 import type { BuyerRequirement, Deal, MatchBoard, PairScore, PriceEstimate, SupplierOffer } from "@/api/types";
 import { cn, fmtUSD } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -349,6 +350,7 @@ function reqSummary(r?: BuyerRequirement | null) {
 /** Match board: every buyer × supplier pair of the prospect, scored on price
  *  (stated or price-book estimate), landed cost, margin and chance of closing. */
 export function MatchBoardPanel({ deal }: { deal: Deal }) {
+  const { data: fx } = useUsdInr();
   const { data: board, isLoading } = useMatchBoard(deal.deal_id);
   const { evaluate } = useMatchActions(deal.deal_id);
   const [editing, setEditing] = useState<MatchBoard["buyers"][number] | null>(null);
@@ -498,7 +500,7 @@ export function MatchBoardPanel({ deal }: { deal: Deal }) {
                           {o.gst_verified && o.iec_active && <Badge variant="success" className="ml-1 text-[9px] h-4">GST+IEC ok</Badge>}
                         </p>
                         <p className="text-muted-foreground">
-                          {[o.fob_price_usd_per_mt != null ? `FOB ${fmtUSD(o.fob_price_usd_per_mt)}/MT` : null, o.grade,
+                          {[o.fob_price_usd_per_mt != null ? `FOB ${fmtUSD(o.fob_price_usd_per_mt)}/MT${inr(o.fob_price_usd_per_mt, fx?.rate) ? ` (${inr(o.fob_price_usd_per_mt, fx?.rate)})` : ""}` : null, o.grade,
                             o.moq_mt != null ? `MOQ ${o.moq_mt} MT` : null,
                             o.capacity_mt_per_month != null ? `${o.capacity_mt_per_month} MT/month` : null,
                             o.lead_time_days != null ? `${o.lead_time_days} days lead` : null, o.port_of_loading,

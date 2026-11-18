@@ -31,6 +31,8 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
+import { CheckChip } from "@/components/CheckChip";
+import { inr, rateTitle } from "@/lib/fx";
 import { cn, fmtUSD, fmtPct, timeAgo, fmtDateTime, countdown } from "@/lib/utils";
 import {
   useDeal,
@@ -51,6 +53,7 @@ import {
   useMatchScore,
   useDealProfit,
   useOpportunity,
+  useUsdInr,
   type EscrowActionKind,
 } from "@/api/hooks";
 import { FilesApi } from "@/api/endpoints";
@@ -902,6 +905,7 @@ function RadarEstimateCard({ deal }: { deal: Deal }) {
 function OverviewTab({ dealId }: { dealId: string }) {
   const { data: deal } = useDeal(dealId);
   const { data: matchScore, isLoading: scoreLoading } = useMatchScore(dealId);
+  const { data: fx } = useUsdInr();
 
   if (!deal) return null;
 
@@ -1109,6 +1113,7 @@ function OverviewTab({ dealId }: { dealId: string }) {
                   <th className="text-right py-2 px-3 font-semibold uppercase tracking-wide text-[10px]">Proximity</th>
                   <th className="text-right py-2 px-3 font-semibold uppercase tracking-wide text-[10px]">Reliability</th>
                   <th className="text-right py-2 px-3 font-semibold uppercase tracking-wide text-[10px]">FOB (USD)</th>
+                  <th className="text-left py-2 px-3 font-semibold uppercase tracking-wide text-[10px]">Check</th>
                   <th className="text-left py-2 pl-3 font-semibold uppercase tracking-wide text-[10px]">Decision</th>
                 </tr>
               </thead>
@@ -1154,6 +1159,12 @@ function OverviewTab({ dealId }: { dealId: string }) {
                         </td>
                         <td className="py-2 px-3 text-right">
                           {m.fob_price_usd != null ? fmtUSD(m.fob_price_usd) : "—"}
+                          {inr(m.fob_price_usd, fx?.rate) && (
+                            <p className="text-[10px] text-muted-foreground" title={rateTitle(fx?.rate, fx?.source)}>{inr(m.fob_price_usd, fx?.rate)}</p>
+                          )}
+                        </td>
+                        <td className="py-2 px-3">
+                          <CheckChip status={m.verification} reasons={m.verification_reasons} />
                         </td>
                         <td className="py-2 pl-3">
                           <Badge
