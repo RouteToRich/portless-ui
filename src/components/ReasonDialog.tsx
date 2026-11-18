@@ -20,7 +20,11 @@ import { Textarea } from "@/components/ui/textarea";
 export interface ReasonField {
   name: string;
   label: string;
-  type?: "text" | "number";
+  type?: "text" | "number" | "date" | "select";
+  /** Choices for type "select" (value, label). */
+  options?: { value: string; label: string }[];
+  /** Initial value. */
+  initial?: string;
   placeholder?: string;
   required?: boolean;
   /** Upper-case the value (country codes). */
@@ -93,7 +97,12 @@ export function ReasonDialogHost() {
 
   useEffect(() => {
     setReason("");
-    setValues({});
+    const start: Record<string, string> = {};
+    for (const f of req?.fields ?? []) {
+      if (f.initial !== undefined) start[f.name] = f.initial;
+      else if (f.type === "select" && f.options?.length && f.required) start[f.name] = f.options[0].value;
+    }
+    setValues(start);
   }, [req]);
 
   if (!req) return null;
@@ -128,11 +137,21 @@ export function ReasonDialogHost() {
           {(req.fields ?? []).map((f, i) => (
             <div key={f.name} className="space-y-1">
               <Label htmlFor={`reason-${f.name}`}>{f.label}{f.required ? "" : " (optional)"}</Label>
-              <Input id={`reason-${f.name}`} autoFocus={req.reasonLabel === false && i === 0}
-                inputMode={f.type === "number" ? "decimal" : undefined} placeholder={f.placeholder}
-                value={values[f.name] ?? ""} data-testid={`reason-field-${f.name}`}
-                onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-                onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+              {f.type === "select" ? (
+                <select id={`reason-${f.name}`} data-testid={`reason-field-${f.name}`}
+                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                  value={values[f.name] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}>
+                  {!f.required && <option value="">—</option>}
+                  {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : (
+                <Input id={`reason-${f.name}`} autoFocus={req.reasonLabel === false && i === 0}
+                  type={f.type === "date" ? "date" : "text"}
+                  inputMode={f.type === "number" ? "decimal" : undefined} placeholder={f.placeholder}
+                  value={values[f.name] ?? ""} data-testid={`reason-field-${f.name}`}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+              )}
               {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
             </div>
           ))}

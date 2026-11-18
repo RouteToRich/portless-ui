@@ -109,6 +109,7 @@ import { HsCode } from "@/components/HsCode";
 import { CorridorFacts, FlagChips, ProfitPanel } from "@/pages/OpportunityRadar";
 
 import { FeesCard, FxCard, LedgerDownloads } from "@/components/backoffice/BackOfficeCards";
+import { CostSheetCard, PackingCard, ProviderConfirmedButton, QcRelayControls, SupplierPhonePanel } from "@/components/deal/RelayPanels";
 const NEGOTIATION_TERMINAL = new Set(["AGREED", "FAILED", "ESCALATED"]);
 
 // Manual inbound-reply submission — moved here from the (now removed) standalone
@@ -1468,6 +1469,8 @@ function freightProgress(status: FreightRecord["status"]): number {
 }
 
 function LogisticsTab({ dealId }: { dealId: string }) {
+  const { user } = useAuth();
+  const isStaff = Boolean(user?.is_portless);
   const { data: qcRecords, isLoading: qcLoading } = useQcRecords(dealId);
   const { data: freightRecords, isLoading: freightLoading } = useFreightRecords(dealId);
 
@@ -1513,6 +1516,7 @@ function LogisticsTab({ dealId }: { dealId: string }) {
                     <span className={cn("text-sm font-bold", qcStatusColor(qc.status))}>
                       {qc.status}
                     </span>
+                    {isStaff && <QcRelayControls dealId={dealId} tpoId={qc.qc_id} />}
                   </div>
                 </div>
               ))}
@@ -1969,6 +1973,8 @@ function EscrowActionDialog({
 }
 
 function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }) {
+  const { user: escrowUser } = useAuth();
+  const isStaff = Boolean(escrowUser?.is_portless);
   const [dialog, setDialog] = useState<EscrowDialogSpec | null>(null);
   const poll = useEscrowAction(dealId);
 
@@ -2171,6 +2177,9 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
                       >
                         {t.status === "SUBMITTED" ? `with ${providerLabel(escrow.provider)}` : t.status}
                       </Badge>
+                      {t.status === "SUBMITTED" && isStaff && (
+                        <span className="ml-2"><ProviderConfirmedButton dealId={dealId} escrowId={escrow.escrow_id} trancheId={t.tranche_id} /></span>
+                      )}
                     </td>
                     <td className="py-2 px-3 font-mono text-[10px] text-muted-foreground max-w-[220px] truncate">
                       {t.proof_refs.length ? t.proof_refs.join(", ") : "—"}
@@ -2514,6 +2523,8 @@ function PaymentsTab({ dealId }: { dealId: string }) {
       {/* Double-entry journal (null until an escrow exists) */}
       <JournalCard dealId={dealId} />
 
+      {isStaff && <CostSheetCard dealId={dealId} />}
+
       {/* Staff: what the money really cost — statement fees, exchange rates, the books */}
       {isStaff && ledger && (
         <>
@@ -2532,6 +2543,7 @@ function PaymentsTab({ dealId }: { dealId: string }) {
 
 export function DealDetail() {
   const { dealId } = useParams<{ dealId: string }>();
+  const { user } = useAuth();
   const { data: deal, isLoading, isError, error, refetch } = useDeal(dealId);
   const notFound = (error as { response?: { status?: number } } | null)?.response?.status === 404;
 
@@ -2613,6 +2625,8 @@ export function DealDetail() {
           <TabsContent value="logistics">
             <div className="space-y-4">
               {deal && <InspectionPlanCard deal={deal} />}
+              {user?.is_portless && <SupplierPhonePanel dealId={dealId} />}
+              {user?.is_portless && <PackingCard dealId={dealId} />}
               <ShipmentTrackingCard dealId={dealId} />
               <LogisticsTab dealId={dealId} />
             </div>

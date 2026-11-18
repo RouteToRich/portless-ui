@@ -43,6 +43,7 @@ import { SourcingStatusBadge, useOpportunitySourcing } from "@/components/Sourci
 import { ValidationBadge } from "@/components/ValidationBadge";
 
 import { PriceAlertsCard } from "@/components/backoffice/BackOfficeCards";
+import { AccuracyCard, FreightLanesCard } from "@/components/deal/RelayPanels";
 function pct(v: number | null | undefined): string {
   return v == null ? "—" : `${v.toFixed(1)}%`;
 }
@@ -1160,6 +1161,8 @@ export function OpportunityRadar() {
       )}
 
       <PriceAlertsCard />
+      <FreightLanesCard />
+      <AccuracyCard />
       <ScanReportCard />
 
       {/* Sort + filters */}
