@@ -18,6 +18,7 @@ import { HsCode } from "@/components/HsCode";
 
 import { askReason } from "@/components/ReasonDialog";
 import { CleanupCard } from "@/components/backoffice/BackOfficeCards";
+import { ReordersDueCard } from "@/components/deal/RelayPanels";
 const BUYER_ORDER = ["selected", "interested", "followed_up", "contacted", "pending", "no_reply", "declined"] as const;
 const BUYER_LABEL: Record<string, string> = {
   selected: "said yes", interested: "said yes", followed_up: "followed up", contacted: "contacted",
@@ -409,6 +410,7 @@ export function Prospects() {
         })}
       </div>
 
+      <ReordersDueCard />
       <CleanupCard />
 
       <div className="flex items-center gap-2 flex-wrap">

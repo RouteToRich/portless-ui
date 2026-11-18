@@ -8,7 +8,7 @@ import { cn, fmtDateTime, fmtUSD } from "@/lib/utils";
 import { errorMessage } from "@/api/client";
 import {
   ageText, BackOfficeApi, type FeeKind, type FxKind, type LedgerFormat, useAuditLog, useCleanupPreview,
-  useCleanupRun, useFees, useFeesOver, useFx, usePriceAlerts, useRecordFee, useRecordFx, useWatchers,
+  useCleanupRun, useFees, useFeesOver, useFx, usePriceAlerts, useRecordFee, useRecordFx, useRunCosts, useWatchers,
 } from "@/api/backoffice";
 import { askReason } from "@/components/ReasonDialog";
 import { downloadBlob } from "@/components/deal/JournalCard";
@@ -373,6 +373,44 @@ export function CleanupCard() {
             </Link>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+/** What each deal cost to run: LLM, Apify and operator decisions (Money & Margin). */
+export function RunCostsCard() {
+  const { data } = useRunCosts();
+  const rows = (data ?? []).slice(0, 15);
+  if (rows.length === 0) return null;
+  return (
+    <Card data-testid="run-costs">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-[#28c2a0]" />
+          <CardTitle>Cost to run each deal</CardTitle>
+          <span className="text-[11px] text-muted-foreground">LLM and Apify spend, operator decisions and how long gates waited</span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <table className="w-full text-xs">
+          <thead className="text-muted-foreground text-left">
+            <tr><th className="py-1">Deal</th><th>LLM calls</th><th>Apify runs</th><th>Tools USD</th><th>Decisions</th><th>Gate wait (h)</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.deal_id} className="border-t border-border/50">
+                <td className="py-1"><Link className="text-primary hover:underline" to={`/deals/${r.deal_id}`}>{r.deal_id}</Link></td>
+                <td className="tabular-nums">{r.llm_calls}</td>
+                <td className="tabular-nums">{r.apify_runs}</td>
+                <td className="tabular-nums">{fmtUSD(r.tool_usd)}</td>
+                <td className="tabular-nums">{r.decisions}</td>
+                <td className="tabular-nums">{r.decision_wait_hours.toFixed(1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </CardContent>
     </Card>
   );

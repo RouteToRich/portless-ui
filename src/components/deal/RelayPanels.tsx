@@ -1,10 +1,10 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Calculator, Package, PhoneCall, Ship, Wallet } from "lucide-react";
 import { cn, fmtUSD } from "@/lib/utils";
 import { errorMessage } from "@/api/client";
 import {
-  RelaysApi, type QcProviderStatus, useAccuracy, useCostSheet, useFreightLanes, useMarketCheck, usePacking,
+  RelaysApi, type QcProviderStatus, useAccuracy, useReordersDue, useCostSheet, useFreightLanes, useMarketCheck, usePacking,
   usePutFreightLane, useRelayRefresh,
 } from "@/api/relays";
 import { askReason } from "@/components/ReasonDialog";
@@ -314,6 +314,53 @@ export function AccuracyCard() {
             </Link>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+/** Repeat a completed deal: same buyer, supplier, product and market; the supplier is asked for a fresh quote. */
+export function ReorderButton({ dealId }: { dealId: string }) {
+  const navigate = useNavigate();
+  async function go() {
+    const r = await askReason({
+      title: "Reorder",
+      consequence: "Starts a new prospect with the same buyer and supplier, product and market; the last agreed price "
+        + "becomes the buyer's target and the supplier gets the RFQ for a fresh quote. Screening and compliance run again.",
+      reasonLabel: false, confirm: "Start reorder", tone: "success",
+      fields: [{ name: "qty", label: "Quantity in MT", type: "number", placeholder: "same as last time" }],
+    });
+    if (!r) return;
+    try {
+      const out = await RelaysApi.reorder(dealId, r.values.qty ? Number(r.values.qty) : undefined);
+      toast.success(`Reorder ${out.deal_id} started`);
+      navigate(`/deals/${out.deal_id}`);
+    } catch (e) {
+      toast.error("Reorder not started", { description: errorMessage(e) });
+    }
+  }
+  return <Button size="sm" variant="success" className="h-8 text-xs" onClick={go} data-testid="reorder">Reorder</Button>;
+}
+
+/** Buyers whose usual next order is near (Prospects). */
+export function ReordersDueCard() {
+  const { data } = useReordersDue();
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <Card data-testid="reorders-due">
+      <CardContent className="p-3 space-y-1.5 text-xs">
+        <div className="text-sm font-medium">Reorders due ({rows.length})</div>
+        {rows.map((r) => (
+          <div key={r.deal_id} className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{r.buyer ?? "Buyer"}</span>
+            <span className="text-muted-foreground">HS {r.hs_code} → {r.market} · every {r.usual_gap_days} d · next ~{r.next_order_due}
+              {r.overdue_days ? ` (${r.overdue_days} d overdue)` : ""}</span>
+            <Link className="text-primary hover:underline" to={`/deals/${r.deal_id}`}>last deal {r.deal_id}</Link>
+            <ReorderButton dealId={r.deal_id} />
+          </div>
+        ))}
       </CardContent>
     </Card>
   );

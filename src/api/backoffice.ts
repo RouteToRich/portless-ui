@@ -70,6 +70,18 @@ export interface StaleProspect { deal_id: string; hs_code: string; market: strin
 
 export type LedgerFormat = "csv" | "tally" | "zoho";
 
+export interface RunCosts {
+  deal_id: string;
+  llm_calls: number;
+  llm_tokens: number;
+  llm_usd: number;
+  apify_runs: number;
+  apify_usd: number;
+  decisions: number;
+  decision_wait_hours: number;
+  tool_usd: number;
+}
+
 async function blob(path: string): Promise<Blob> {
   const r = await api.get(path, { responseType: "blob" });
   return r.data instanceof Blob ? r.data : new Blob([String(r.data)], { type: "text/csv" });
@@ -91,6 +103,7 @@ export const BackOfficeApi = {
   cleanupRun: () => api.post<{ closed: string[]; failed: string[] }>("/deals/prospects/cleanup").then((r) => r.data),
   journalFile: (dealId: string, format: LedgerFormat) => blob(`/escrow-guard/deals/${dealId}/journal?format=${format}`),
   allJournalsFile: (format: LedgerFormat) => blob(`/escrow-guard/journals?format=${format}`),
+  runCosts: () => api.get<RunCosts[]>("/deals/run-costs").then((r) => r.data),
 };
 
 export const useAuditLog = () => useQuery({ queryKey: ["audit-log"], queryFn: () => BackOfficeApi.audit(), refetchInterval: 60_000 });
@@ -99,6 +112,7 @@ export const useFees = (dealId: string) => useQuery({ queryKey: ["fees", dealId]
 export const useFeesOver = () => useQuery({ queryKey: ["fees-over"], queryFn: BackOfficeApi.feesOver, refetchInterval: 120_000 });
 export const useFx = (dealId: string) => useQuery({ queryKey: ["fx", dealId], queryFn: () => BackOfficeApi.fx(dealId) });
 export const usePriceAlerts = () => useQuery({ queryKey: ["price-alerts"], queryFn: BackOfficeApi.priceAlerts, refetchInterval: 300_000 });
+export const useRunCosts = () => useQuery({ queryKey: ["run-costs"], queryFn: BackOfficeApi.runCosts, refetchInterval: 300_000 });
 export const useCleanupPreview = () => useQuery({ queryKey: ["prospect-cleanup"], queryFn: BackOfficeApi.cleanupPreview });
 
 export function useRecordFee(dealId: string) {

@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { HsCode } from "@/components/HsCode";
 
-import { FeesOverCard } from "@/components/backoffice/BackOfficeCards";
+import { FeesOverCard, RunCostsCard } from "@/components/backoffice/BackOfficeCards";
 function ledgerStatusVariant(status: string | null | undefined) {
   switch (status) {
     case "FUNDED": return "success" as const;
@@ -470,6 +470,7 @@ export function MoneyMargin() {
       <CostTable />
       <FunnelCard />
       <FeesOverCard />
+      <RunCostsCard />
 
       {/* Table */}
       {isLoading ? (

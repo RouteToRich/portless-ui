@@ -60,6 +60,11 @@ export interface Accuracy {
   overall: { deals: number; median_ratio: number } | null;
 }
 
+export interface ReorderDue {
+  deal_id: string; buyer: string | null; hs_code: string; market: string; orders: number;
+  usual_gap_days: number; next_order_due: string; overdue_days: number;
+}
+
 export const RelaysApi = {
   confirmOrder: (dealId: string, reason: string) =>
     api.post(`/deals/${dealId}/supplier-commitment/confirm`, { reason }).then((r) => r.data),
@@ -88,12 +93,16 @@ export const RelaysApi = {
   putFreightLane: (body: { market: string; container_type: string; usd_per_container: number; container_mt?: number; note?: string }) =>
     api.put("/trade-min/freight-lanes", body).then((r) => r.data),
   accuracy: () => api.get<Accuracy>("/trade-min/profit/accuracy").then((r) => r.data),
+  reorder: (dealId: string, quantityMt?: number) =>
+    api.post<{ deal_id: string }>(`/deals/${dealId}/reorder`, quantityMt ? { quantity_mt: quantityMt } : {}).then((r) => r.data),
+  reordersDue: () => api.get<ReorderDue[]>("/deals/reorders/due").then((r) => r.data),
 };
 
 export const useCostSheet = (dealId: string) => useQuery({ queryKey: ["cost-sheet", dealId], queryFn: () => RelaysApi.costSheet(dealId) });
 export const useMarketCheck = (dealId: string) => useQuery({ queryKey: ["market-check", dealId], queryFn: () => RelaysApi.marketCheck(dealId) });
 export const usePacking = (dealId: string) => useQuery({ queryKey: ["packing", dealId], queryFn: () => RelaysApi.packing(dealId) });
 export const useFreightLanes = () => useQuery({ queryKey: ["freight-lanes"], queryFn: RelaysApi.freightLanes });
+export const useReordersDue = () => useQuery({ queryKey: ["reorders-due"], queryFn: RelaysApi.reordersDue });
 export const useAccuracy = () => useQuery({ queryKey: ["profit-accuracy"], queryFn: RelaysApi.accuracy });
 
 /** After a relay: everything on the deal page that may have moved. */
