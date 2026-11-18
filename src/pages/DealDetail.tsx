@@ -110,6 +110,7 @@ import { CorridorFacts, FlagChips, ProfitPanel } from "@/pages/OpportunityRadar"
 
 import { FeesCard, FxCard, LedgerDownloads } from "@/components/backoffice/BackOfficeCards";
 import { CostSheetCard, PackingCard, ProviderConfirmedButton, QcRelayControls, ReorderButton, SupplierPhonePanel } from "@/components/deal/RelayPanels";
+import { AcceptExposureButton, CustomsRealisationCard, ExportCertificatesCard } from "@/components/deal/ComplianceCards";
 const NEGOTIATION_TERMINAL = new Set(["AGREED", "FAILED", "ESCALATED"]);
 
 // Manual inbound-reply submission — moved here from the (now removed) standalone
@@ -2633,6 +2634,10 @@ export function DealDetail() {
               {deal && <InspectionPlanCard deal={deal} />}
               {user?.is_portless && deal?.status === "PAID" && <div><ReorderButton dealId={dealId} /></div>}
               {user?.is_portless && <SupplierPhonePanel dealId={dealId} />}
+              {user?.is_portless && <ExportCertificatesCard dealId={dealId} />}
+              {user?.is_portless && <CustomsRealisationCard dealId={dealId} />}
+              {user?.is_portless && ["NEGOTIATION_AGREED", "NEGOTIATING"].includes(String(deal?.status)) && (
+                <div><AcceptExposureButton dealId={dealId} /></div>)}
               {user?.is_portless && <PackingCard dealId={dealId} />}
               <ShipmentTrackingCard dealId={dealId} />
               <LogisticsTab dealId={dealId} />

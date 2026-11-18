@@ -69,6 +69,16 @@ export interface ReorderDue {
   usual_gap_days: number; next_order_due: string; overdue_days: number;
 }
 
+export interface DgftStatus { loaded: boolean; count: number; loaded_at: string | null; loaded_by: string | null;
+  age_days: number | null; stale: boolean }
+export interface ExportCertificates {
+  required: { kind: string; label: string; certificate: { number: string; issued_on: string | null; issuer: string | null } | null }[];
+  missing: string[]; enforced: boolean;
+}
+export interface RealisationRow { shipping_bill_number: string | null; shipping_bill_date: string | null; currency: string;
+  invoice_value: number; realised: number; outstanding: number; deadline: string | null; days_left: number | null;
+  status: string; filed_by: string; deal_id?: string }
+
 export const RelaysApi = {
   confirmOrder: (dealId: string, reason: string) =>
     api.post(`/deals/${dealId}/supplier-commitment/confirm`, { reason }).then((r) => r.data),
@@ -100,6 +110,21 @@ export const RelaysApi = {
   reorder: (dealId: string, quantityMt?: number) =>
     api.post<{ deal_id: string }>(`/deals/${dealId}/reorder`, quantityMt ? { quantity_mt: quantityMt } : {}).then((r) => r.data),
   reordersDue: () => api.get<ReorderDue[]>("/deals/reorders/due").then((r) => r.data),
+  dgftStatus: () => api.get<DgftStatus>("/deals/compliance/dgft-denied").then((r) => r.data),
+  dgftLoad: (csv: string) => api.put("/deals/compliance/dgft-denied", { csv }).then((r) => r.data),
+  manualCustoms: (dealId: string, body: { shipping_bill_number: string; shipping_bill_date: string;
+    let_export_order_date?: string; port?: string; evidence?: string }) =>
+    api.post(`/shield-link/deals/${dealId}/customs/manual`, body).then((r) => r.data),
+  acceptExposure: (dealId: string, reason: string) =>
+    api.post(`/deals/${dealId}/exposure/accept`, { reason }).then((r) => r.data),
+  exportCertificates: (dealId: string) =>
+    api.get<ExportCertificates>(`/deals/${dealId}/export-certificates`).then((r) => r.data),
+  recordCertificate: (dealId: string, body: { kind: string; number: string; issued_on?: string; issuer?: string; evidence?: string }) =>
+    api.post<ExportCertificates>(`/deals/${dealId}/export-certificates`, body).then((r) => r.data),
+  realisation: (dealId: string) =>
+    api.get<{ shipping_bills: RealisationRow[] }>(`/deals/${dealId}/realisation`).then((r) => r.data),
+  realisationOpen: () => api.get<RealisationRow[]>("/deals/realisation/open").then((r) => r.data),
+  prearranged: (body: Record<string, unknown>) => api.post<{ deal_id: string }>("/deals/prearranged", body).then((r) => r.data),
 };
 
 export const useCostSheet = (dealId: string) => useQuery({ queryKey: ["cost-sheet", dealId], queryFn: () => RelaysApi.costSheet(dealId) });
@@ -107,6 +132,12 @@ export const useMarketCheck = (dealId: string) => useQuery({ queryKey: ["market-
 export const usePacking = (dealId: string) => useQuery({ queryKey: ["packing", dealId], queryFn: () => RelaysApi.packing(dealId) });
 export const useFreightLanes = () => useQuery({ queryKey: ["freight-lanes"], queryFn: RelaysApi.freightLanes });
 export const useReordersDue = () => useQuery({ queryKey: ["reorders-due"], queryFn: RelaysApi.reordersDue });
+export const useDgftStatus = () => useQuery({ queryKey: ["dgft-status"], queryFn: RelaysApi.dgftStatus });
+export const useExportCertificates = (dealId: string) =>
+  useQuery({ queryKey: ["export-certificates", dealId], queryFn: () => RelaysApi.exportCertificates(dealId) });
+export const useRealisation = (dealId: string) =>
+  useQuery({ queryKey: ["realisation", dealId], queryFn: () => RelaysApi.realisation(dealId) });
+export const useRealisationOpen = () => useQuery({ queryKey: ["realisation-open"], queryFn: RelaysApi.realisationOpen });
 export const useAccuracy = () => useQuery({ queryKey: ["profit-accuracy"], queryFn: RelaysApi.accuracy });
 
 /** After a relay: everything on the deal page that may have moved. */
@@ -114,7 +145,7 @@ export function useRelayRefresh(dealId: string) {
   const qc = useQueryClient();
   return () => {
     for (const key of ["deal", "supplier-commitment", "qc-records", "escrow-hold", "escrow-ledger", "approvals",
-      "packing", "cost-sheet", "deal-timeline"]) {
+      "packing", "cost-sheet", "deal-timeline", "export-certificates", "realisation"]) {
       qc.invalidateQueries({ queryKey: [key, dealId] });
     }
     qc.invalidateQueries({ queryKey: ["approvals"] });

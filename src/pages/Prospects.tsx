@@ -19,6 +19,7 @@ import { HsCode } from "@/components/HsCode";
 import { askReason } from "@/components/ReasonDialog";
 import { CleanupCard } from "@/components/backoffice/BackOfficeCards";
 import { ReordersDueCard } from "@/components/deal/RelayPanels";
+import { PrearrangedTradeButton } from "@/components/deal/ComplianceCards";
 const BUYER_ORDER = ["selected", "interested", "followed_up", "contacted", "pending", "no_reply", "declined"] as const;
 const BUYER_LABEL: Record<string, string> = {
   selected: "said yes", interested: "said yes", followed_up: "followed up", contacted: "contacted",
@@ -373,6 +374,8 @@ export function Prospects() {
             on the Deal Board once a buyer says yes and a supplier is chosen.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        <PrearrangedTradeButton />
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
@@ -381,6 +384,7 @@ export function Prospects() {
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-8 w-56 text-xs"
           />
+        </div>
         </div>
       </div>
 
