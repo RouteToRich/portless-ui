@@ -108,6 +108,7 @@ import type {
 import { HsCode } from "@/components/HsCode";
 import { CorridorFacts, FlagChips, ProfitPanel } from "@/pages/OpportunityRadar";
 
+import { FeesCard, FxCard, LedgerDownloads } from "@/components/backoffice/BackOfficeCards";
 const NEGOTIATION_TERMINAL = new Set(["AGREED", "FAILED", "ESCALATED"]);
 
 // Manual inbound-reply submission — moved here from the (now removed) standalone
@@ -2472,6 +2473,8 @@ function PayoutsCard({ ledger }: { ledger: DealLedger }) {
 }
 
 function PaymentsTab({ dealId }: { dealId: string }) {
+  const { user } = useAuth();
+  const isStaff = Boolean(user?.is_portless);
   const { data: escrow, isLoading } = useEscrowHold(dealId);
   const { data: ledger, isLoading: ledgerLoading } = useDealLedger(dealId);
 
@@ -2510,6 +2513,17 @@ function PaymentsTab({ dealId }: { dealId: string }) {
 
       {/* Double-entry journal (null until an escrow exists) */}
       <JournalCard dealId={dealId} />
+
+      {/* Staff: what the money really cost — statement fees, exchange rates, the books */}
+      {isStaff && ledger && (
+        <>
+          <LedgerDownloads dealId={dealId} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <FeesCard dealId={dealId} />
+            <FxCard dealId={dealId} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

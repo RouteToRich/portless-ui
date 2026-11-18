@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { timeAgo } from "@/lib/utils";
 
+import { askReason } from "@/components/ReasonDialog";
 /** Companies whose sanctions screening returned "review" (a possible list match, or a list
  * that was unavailable). They stay unverified — never contacted as verified — until staff
  * clear or fail them with a reason. Hidden while the queue is empty. */
@@ -16,12 +17,21 @@ export function ScreeningReviewCard() {
   if (rows.length === 0) return null;
 
   async function decide(c: Counterparty, decision: "clear" | "fail") {
-    const reason = window.prompt(
-      decision === "clear"
-        ? `Clear ${c.name}: why is it not the listed entity? (kept on the record)`
-        : `Fail ${c.name}: why is it the listed entity? It will never be contacted. (kept on the record)`
-    );
-    if (!reason || reason.trim().length < 3) return;
+    const r = await askReason(decision === "clear"
+      ? {
+          title: `Clear ${c.name}`,
+          consequence: "Records that this company is NOT the listed entity. A second, different person must "
+            + "confirm before it counts as verified and can be contacted. Both decisions stay in the audit log.",
+          reasonLabel: "Why is it not the listed entity?", confirm: "Clear", tone: "success",
+        }
+      : {
+          title: `Fail ${c.name}`,
+          consequence: "Records that this company IS (or may be) the listed entity. It is never contacted "
+            + "and never becomes a deal party. Takes effect at once.",
+          reasonLabel: "Why is it the listed entity?", confirm: "Fail", tone: "destructive",
+        });
+    if (!r) return;
+    const reason = r.reason;
     try {
       await resolve.mutateAsync({ role: c.role, id: c.id, decision, reason: reason.trim() });
       const pending = decision === "clear" && !(c.screening_reviews ?? []).some((r) => r.decision === "clear" && r.pending);

@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HsCode } from "@/components/HsCode";
 
+import { askReason } from "@/components/ReasonDialog";
+import { CleanupCard } from "@/components/backoffice/BackOfficeCards";
 const BUYER_ORDER = ["selected", "interested", "followed_up", "contacted", "pending", "no_reply", "declined"] as const;
 const BUYER_LABEL: Record<string, string> = {
   selected: "said yes", interested: "said yes", followed_up: "followed up", contacted: "contacted",
@@ -124,13 +126,25 @@ function ProspectControls({ dealId, parked, canRetry }: { dealId: string; parked
         toast.success("Prospect unparked — reminders run again");
         return;
       }
-      const reason = window.prompt(what === "park"
-        ? "Park: why? (reminders stop, the record stays)"
-        : "Drop: why? The prospect closes as cancelled and its open gates close.");
-      if (!reason || reason.trim().length < 3) return;
+      const r = await askReason(what === "park"
+        ? {
+            title: "Park prospect",
+            consequence: "Follow-ups, reminders and the stall alarm stop; the prospect and its offers stay. "
+              + "It wakes up on the date you give, or when you unpark it.",
+            confirm: "Park", tone: "warning",
+            fields: [{ name: "days", label: "Park for how many days", type: "number", placeholder: "empty = until unparked" }],
+          }
+        : {
+            title: "Drop prospect",
+            consequence: "The prospect closes as CANCELLED and its open gates (match, indicative offer, RFQ, "
+              + "outreach) are withdrawn. This cannot be undone.",
+            confirm: "Drop", tone: "destructive",
+          });
+      if (!r) return;
+      const reason = r.reason;
       let until: string | undefined;
       if (what === "park") {
-        const days = window.prompt("Park for how many days? (empty = until you unpark it)", "");
+        const days = r.values.days;
         const n = Number(days);
         if (days && Number.isFinite(n) && n > 0) until = new Date(Date.now() + n * 86_400_000).toISOString();
         await ctl.park.mutateAsync({ dealId, reason: reason.trim(), until });
@@ -394,6 +408,8 @@ export function Prospects() {
           );
         })}
       </div>
+
+      <CleanupCard />
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-muted-foreground">Sort:</span>

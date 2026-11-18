@@ -42,6 +42,7 @@ import { HsCode } from "@/components/HsCode";
 import { SourcingStatusBadge, useOpportunitySourcing } from "@/components/SourcingStatusBadge";
 import { ValidationBadge } from "@/components/ValidationBadge";
 
+import { PriceAlertsCard } from "@/components/backoffice/BackOfficeCards";
 function pct(v: number | null | undefined): string {
   return v == null ? "—" : `${v.toFixed(1)}%`;
 }
@@ -1158,6 +1159,7 @@ export function OpportunityRadar() {
         </div>
       )}
 
+      <PriceAlertsCard />
       <ScanReportCard />
 
       {/* Sort + filters */}

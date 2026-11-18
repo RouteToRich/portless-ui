@@ -19,6 +19,7 @@ import { AUTOMATION_AVAILABLE } from "./lib/automationMode";
 import { Login } from "./pages/Login";
 import { useAuth } from "./lib/auth";
 
+import { ReasonDialogHost } from "./components/ReasonDialog";
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? children : <Navigate to="/login" replace />;
@@ -164,6 +165,7 @@ export default function App() {
         </Route>
       </Routes>
 
+      <ReasonDialogHost />
       <Toaster
         position="bottom-right"
         theme="dark"

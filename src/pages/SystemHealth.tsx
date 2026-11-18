@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
+import { AuditLogCard, WatchersCard } from "@/components/backoffice/BackOfficeCards";
 const CATEGORY_LABELS: Record<string, string> = {
   persistence: "Persistence",
   bus: "Event bus",
@@ -496,6 +497,8 @@ export function SystemHealth() {
 
       {/* Production readiness — which stubs / fallbacks the pipeline runs on */}
       <ReadinessPanel />
+      <WatchersCard />
+      <AuditLogCard />
 
       {/* Data sources + Apify run budget, and the daily operator digest */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">

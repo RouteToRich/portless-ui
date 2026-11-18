@@ -33,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { HsCode } from "@/components/HsCode";
 import { HsPicker, type HsChoice } from "@/components/HsPicker";
 
+import { askReason } from "@/components/ReasonDialog";
 type Role = "buyer" | "supplier";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -184,10 +185,11 @@ function ContactSwitch({ role, c }: { role: Role; c: Counterparty }) {
   if (!user?.is_portless) return null;
   async function toggle() {
     if (!c.do_not_contact) {
-      const reason = window.prompt(`Why should PortLess never write to ${c.name} again?`);
-      if (!reason || !reason.trim()) return;
+      const r = await askReason({ title: `Do not contact ${c.name}`, consequence: "PortLess stops writing to this company in every prospect: no introduction, RFQ, reconfirmation or follow-up. A deal already running keeps going.",
+        confirm: "Do not contact", tone: "destructive" });
+      if (!r) return;
       try {
-        await pref.mutateAsync({ role, id: c.id, doNotContact: true, reason: reason.trim() });
+        await pref.mutateAsync({ role, id: c.id, doNotContact: true, reason: r.reason });
         toast.success(`${c.name} is on the do-not-contact list`);
       } catch {
         toast.error("Could not update the contact preference");
@@ -277,13 +279,21 @@ function BulkBar({ role, ids, onDone }: { role: Role; ids: string[]; onDone: () 
         if (est.confirm_needed && !window.confirm(`Check ${ids.length} compan${ids.length === 1 ? "y" : "ies"}? ${est.note ?? ""}`)) return;
         body = { ...body, confirm: true };
       } else if (action === "do_not_contact") {
-        const reason = window.prompt(`Why should PortLess never write to these ${ids.length} companies again?`);
-        if (!reason?.trim()) return;
-        body = { ...body, reason: reason.trim() };
+        const r = await askReason({ title: `Do not contact ${ids.length} compan${ids.length === 1 ? "y" : "ies"}`,
+          consequence: "PortLess stops writing to this company in every prospect: no introduction, RFQ, reconfirmation or follow-up. A deal already running keeps going.", confirm: "Do not contact", tone: "destructive" });
+        if (!r) return;
+        body = { ...body, reason: r.reason };
       } else {
-        const dealId = window.prompt("Add to which prospect? (deal id, e.g. DEAL-…)");
-        if (!dealId?.trim()) return;
-        body = { ...body, deal_id: dealId.trim() };
+        const r = await askReason({
+          title: `Add ${ids.length} compan${ids.length === 1 ? "y" : "ies"} to a prospect`,
+          consequence: "Buyers join the prospect's outreach funnel (introductions follow the outreach gate); "
+            + "suppliers join its match board and get the RFQ. Do-not-contact, failed checks and companies "
+            + "without an e-mail are refused.",
+          reasonLabel: false, confirm: "Add",
+          fields: [{ name: "deal", label: "Prospect (deal id)", placeholder: "DEAL-…", required: true }],
+        });
+        if (!r) return;
+        body = { ...body, deal_id: r.values.deal };
       }
       const out = await CounterpartiesApi.bulk(role, body);
       const failed = (out.results ?? []).filter((r) => !r.ok);

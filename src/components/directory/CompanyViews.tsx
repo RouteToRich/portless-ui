@@ -21,6 +21,7 @@ import { SupplierFormDialog } from "@/components/directory/ManualSupplierDialogs
 import { CounterpartiesApi } from "@/api/endpoints";
 import { FlagChips } from "@/pages/OpportunityRadar";
 
+import { askReason } from "@/components/ReasonDialog";
 type Role = "buyer" | "supplier";
 
 export const STAGE_STYLE: Record<string, { label: string; cls: string; dot: string }> = {
@@ -397,9 +398,10 @@ export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: str
   async function toggleDnc() {
     if (!c) return;
     if (!c.do_not_contact) {
-      const reason = window.prompt(`Why should PortLess never write to ${c.name} again?`);
-      if (!reason?.trim()) return;
-      await pref.mutateAsync({ role, id: c.id, doNotContact: true, reason: reason.trim() });
+      const r = await askReason({ title: `Do not contact ${c.name}`, consequence: "PortLess stops writing to this company in every prospect: no introduction, RFQ, reconfirmation or follow-up. A deal already running keeps going.",
+        confirm: "Do not contact", tone: "destructive" });
+      if (!r) return;
+      await pref.mutateAsync({ role, id: c.id, doNotContact: true, reason: r.reason });
       toast.success(`${c.name} is on the do-not-contact list`);
     } else if (window.confirm(`Allow PortLess to write to ${c.name} again?`)) {
       await pref.mutateAsync({ role, id: c.id, doNotContact: false });
@@ -543,9 +545,20 @@ export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: str
               <section className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">Supply first: find a buyer for this supplier's lot</span>
                 <Button size="sm" className="h-7 text-[11px] ml-auto" onClick={async () => {
-                  const market = window.prompt("Which market? (2-letter country code, e.g. AE)")?.trim().toUpperCase();
-                  if (!market) return;
-                  const qty = Number(window.prompt("Quantity in MT? (empty = default)") || "0");
+                  const r = await askReason({
+                    title: `Start a prospect from ${c.name}`,
+                    consequence: "Opens a prospect with this supplier and its usual price as the offer, adds the "
+                      + "directory's best contactable buyers of the product in that market and sends them "
+                      + "introductions (outreach gate rules apply).",
+                    reasonLabel: false, confirm: "Start prospect", tone: "success",
+                    fields: [
+                      { name: "market", label: "Market (2-letter country code)", placeholder: "AE", required: true, upper: true },
+                      { name: "qty", label: "Quantity in MT", type: "number", placeholder: "default from the catalogue" },
+                    ],
+                  });
+                  if (!r) return;
+                  const market = r.values.market;
+                  const qty = Number(r.values.qty || "0");
                   try {
                     const out = await CounterpartiesApi.startProspect(c.id, market, undefined, qty || undefined);
                     toast.success(`Prospect ${out.deal_id} started`, {
