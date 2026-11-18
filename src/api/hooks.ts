@@ -429,6 +429,21 @@ export function useContactPreference() {
   });
 }
 
+/** The sanctions "review" queue (staff). */
+export function useScreeningReview() {
+  return useQuery({ queryKey: ["counterparties", "screening-review"], queryFn: CounterpartiesApi.screeningReview });
+}
+
+/** Clear / fail one company in the review queue. */
+export function useResolveScreening() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ role, id, decision, reason }: { role: "buyer" | "supplier"; id: string; decision: "clear" | "fail"; reason: string }) =>
+      CounterpartiesApi.resolveScreening(role, id, decision, reason),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["counterparties"] }),
+  });
+}
+
 /** One company's profile (opened from the directory). */
 export function useCounterpartyProfile(role: "buyer" | "supplier", id: string | null) {
   return useQuery({

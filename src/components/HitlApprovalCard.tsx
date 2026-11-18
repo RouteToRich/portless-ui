@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import {
   CheckCircle2,
   XCircle,
+  MinusCircle,
   Clock,
   AlertTriangle,
   DollarSign,
@@ -12,6 +13,7 @@ import {
   Mail,
   Wrench,
 } from "lucide-react";
+import { approvalStatusLabel, approvalStatusVariant, isSuperseded, supersededText, type ResolvedLike } from "@/lib/approvals";
 import { cn, fmtUSD, countdown, timeAgo } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { ApprovalRecord } from "@/api/types";
@@ -32,20 +34,8 @@ function autonomyBadge(level: string) {
   return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
 }
 
-function statusBadge(status: string) {
-  switch (status) {
-    case "PENDING":
-      return <Badge variant="warning">Pending</Badge>;
-    case "APPROVED":
-    case "AUTO_APPROVED":
-      return <Badge variant="success">Approved</Badge>;
-    case "REJECTED":
-      return <Badge variant="destructive">Rejected</Badge>;
-    case "TIMED_OUT":
-      return <Badge variant="secondary">Timed Out</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
+function statusBadge(approval: ResolvedLike) {
+  return <Badge variant={approvalStatusVariant(approval)}>{approvalStatusLabel(approval)}</Badge>;
 }
 
 function formatAction(action: string): string {
@@ -367,6 +357,7 @@ export function HitlApprovalCard({
   const operator = user?.email ?? user?.name ?? "operator";
 
   const isPending = approval.status === "PENDING";
+  const superseded = isSuperseded(approval);
   const isExpiring =
     approval.expires_at &&
     new Date(approval.expires_at).getTime() - Date.now() < 10 * 60 * 1000; // < 10min
@@ -426,8 +417,8 @@ export function HitlApprovalCard({
         "rounded-lg border bg-card",
         isPending && "border-[#f5a623]/30",
         !isPending && approval.status === "APPROVED" && "border-[#2ec28a]/30",
-        !isPending && approval.status === "REJECTED" && "border-[#ff5d6c]/30",
-        !isPending && approval.status !== "APPROVED" && approval.status !== "REJECTED" && "border-border"
+        !isPending && approval.status === "REJECTED" && !superseded && "border-[#ff5d6c]/30",
+        !isPending && approval.status !== "APPROVED" && (approval.status !== "REJECTED" || superseded) && "border-border"
       )}
     >
       {/* Header */}
@@ -458,7 +449,7 @@ export function HitlApprovalCard({
             </Badge>
           )}
           {autonomyBadge(approval.autonomy_level)}
-          {statusBadge(approval.status)}
+          {statusBadge(approval)}
         </div>
       </div>
 
@@ -582,12 +573,14 @@ export function HitlApprovalCard({
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-secondary border border-border">
                 {approval.status === "APPROVED" || approval.status === "AUTO_APPROVED" ? (
                   <CheckCircle2 className="w-4 h-4 text-[#2ec28a] shrink-0" />
+                ) : superseded ? (
+                  <MinusCircle className="w-4 h-4 text-muted-foreground shrink-0" />
                 ) : (
                   <XCircle className="w-4 h-4 text-[#ff5d6c] shrink-0" />
                 )}
                 <div className="text-xs">
                   <span className="font-medium">
-                    {approval.resolved_by ?? "System"}
+                    {superseded ? supersededText(approval) : approval.resolved_by ?? "System"}
                   </span>
                   {" · "}
                   <span className="text-muted-foreground">

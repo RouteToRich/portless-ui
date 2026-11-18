@@ -1,0 +1,76 @@
+import { ExternalLink, ShieldQuestion } from "lucide-react";
+import { toast } from "sonner";
+import { useResolveScreening, useScreeningReview } from "@/api/hooks";
+import type { Counterparty } from "@/api/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { timeAgo } from "@/lib/utils";
+
+/** Companies whose sanctions screening returned "review" (a possible list match, or a list
+ * that was unavailable). They stay unverified — never contacted as verified — until staff
+ * clear or fail them with a reason. Hidden while the queue is empty. */
+export function ScreeningReviewCard() {
+  const { data } = useScreeningReview();
+  const resolve = useResolveScreening();
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+
+  async function decide(c: Counterparty, decision: "clear" | "fail") {
+    const reason = window.prompt(
+      decision === "clear"
+        ? `Clear ${c.name}: why is it not the listed entity? (kept on the record)`
+        : `Fail ${c.name}: why is it the listed entity? It will never be contacted. (kept on the record)`
+    );
+    if (!reason || reason.trim().length < 3) return;
+    try {
+      await resolve.mutateAsync({ role: c.role, id: c.id, decision, reason: reason.trim() });
+      toast.success(`${c.name} ${decision === "clear" ? "cleared" : "failed"}`);
+    } catch (e) {
+      toast.error("Not saved", { description: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return (
+    <Card className="border-[#f5a623]/40" data-testid="screening-review">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-sm font-medium">
+          <ShieldQuestion className="w-4 h-4 text-[#f5a623]" />
+          Sanctions screening needs a person ({rows.length})
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          A possible list match or an unavailable list. Each stays unverified until you clear or fail it.
+        </p>
+        <ul className="divide-y divide-border">
+          {rows.map((c) => {
+            const v = c.validation;
+            const evidence = v?.evidence_url && /^https?:\/\//i.test(v.evidence_url) ? v.evidence_url : null;
+            return (
+              <li key={c.id} className="py-1.5 flex items-start gap-2 text-xs">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">
+                    {c.name}{" "}
+                    <span className="text-muted-foreground font-normal">
+                      · {c.role} · {c.country ?? "—"}
+                      {v?.checked_at ? ` · screened ${timeAgo(v.checked_at)}` : ""}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">{v?.sanctions_reason ?? "No reason given by the screening"}</div>
+                  {evidence && (
+                    <a href={evidence} target="_blank" rel="noopener noreferrer"
+                      className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5">
+                      screening certificate <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
+                <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={resolve.isPending}
+                  onClick={() => decide(c, "clear")}>Clear</Button>
+                <Button size="sm" variant="outline" className="h-7 text-[11px] text-[#ff5d6c]" disabled={resolve.isPending}
+                  onClick={() => decide(c, "fail")}>Fail</Button>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}

@@ -271,6 +271,12 @@ export const CounterpartiesApi = {
   setContactPreference: (role: "buyer" | "supplier", id: string, doNotContact: boolean, reason?: string) =>
     api.put<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/contact-preference`,
       { do_not_contact: doNotContact, reason }).then((r) => r.data),
+  /** Companies whose sanctions screening returned "review" — waiting for a staff decision. */
+  screeningReview: () => api.get<Counterparty[]>("/trade-min/screening/review").then((r) => r.data),
+  /** Clear or fail a "review" screening with a reason (staff; kept on the record). */
+  resolveScreening: (role: "buyer" | "supplier", id: string, decision: "clear" | "fail", reason: string) =>
+    api.post<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/screening-review`,
+      { decision, reason }).then((r) => r.data),
   /** One company: score, relationship, engagements, timeline, open prospects, next actions. */
   profile: (role: "buyer" | "supplier", id: string) =>
     api.get<CounterpartyProfile>(`/trade-min/${role}s/${encodeURIComponent(id)}/profile`).then((r) => r.data),

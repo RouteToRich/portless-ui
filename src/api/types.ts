@@ -26,6 +26,14 @@ export type AutonomyLevel = "L0" | "L1" | "L2" | "L3";
 export type EmailStatus = "ok" | "risky" | "invalid" | "unverified";
 export type SanctionsStatus = "clear" | "review" | "block" | "unchecked";
 
+// An address a party no longer has (Party.address_history).
+export interface AddressChange {
+  address: string;
+  source?: string | null;
+  replaced_at: string;
+  replaced_by?: string | null;
+}
+
 export interface Party {
   party_id?: string | null;
   role: "buyer" | "supplier";
@@ -43,6 +51,9 @@ export interface Party {
   website?: string | null;
   phone?: string | null;
   address?: string | null;
+  // Who gave the current address, and the earlier ones it replaced (oldest first).
+  address_source?: string | null;
+  address_history?: AddressChange[];
   contact_source?: string | null;
   contact_confidence?: number | null;
   email_status?: EmailStatus | string | null;
@@ -50,6 +61,7 @@ export interface Party {
   sanctions_status?: SanctionsStatus | string | null;
   sanctions_reason?: string | null;
   sanctions_checked_at?: string | null;
+  sanctions_evidence_url?: string | null;
   lei?: string | null;
   vat_valid?: boolean | null;
   enriched_at?: string | null;
@@ -869,6 +881,17 @@ export type SourceRole = "demand" | "buyers" | "sellers" | "tariff" | "enrichmen
 
 /** A buyer or supplier a scan found (GET /trade-min/buyers | /trade-min/suppliers) —
  *  kept whether or not the scan produced an opportunity or a deal. */
+// A staff decision on a counterparty whose sanctions screening returned "review".
+export interface ScreeningReview {
+  decision: "clear" | "fail";
+  reason: string;
+  by: string;
+  at: string;
+  previous_sanctions: string;
+  previous_reason?: string | null;
+  evidence_url?: string | null;
+}
+
 export interface Counterparty {
   id: string;
   role: "buyer" | "supplier";
@@ -905,6 +928,8 @@ export interface Counterparty {
   do_not_contact?: boolean;
   dnc_reason?: string | null;
   dnc_at?: string | null;
+  // Staff decisions on a sanctions "review" result (audit trail, oldest first).
+  screening_reviews?: ScreeningReview[];
   /** Where PortLess stands with the company across every prospect and deal. */
   relationship?: CounterpartyRelationship | null;
   /** 0–100: who to work with first. */

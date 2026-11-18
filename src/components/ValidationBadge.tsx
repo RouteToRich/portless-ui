@@ -1,4 +1,4 @@
-import { ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
+import { ExternalLink, ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
 import type { CounterpartyValidation } from "@/api/types";
 import { cn } from "@/lib/utils";
 
@@ -24,14 +24,23 @@ export function ValidationBadge({ v, className }: { v?: CounterpartyValidation |
         ...(v.checked_at ? ["", `Checked ${new Date(v.checked_at).toLocaleString()}`] : []),
       ]
     : ["Not checked yet (outside the top buyers / suppliers of the scan, or validation is off)"];
-  return (
+  const evidence = v?.evidence_url && /^https?:\/\//i.test(v.evidence_url) ? v.evidence_url : null;
+  const badge = (
     <span
       className={cn("inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0", cls, className)}
-      title={lines.join("\n")}
+      title={lines.join("\n") + (evidence ? "\n\nClick for the screening certificate" : "")}
       data-testid={`validation-${status}`}
     >
       <Icon className="w-2.5 h-2.5" />
       {v ? label : "Not checked"}
+      {evidence && <ExternalLink className="w-2 h-2 opacity-70" />}
     </span>
+  );
+  if (!evidence) return badge;
+  // The badge sits inside clickable rows / cards: open the certificate without selecting the row.
+  return (
+    <a href={evidence} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="shrink-0">
+      {badge}
+    </a>
   );
 }

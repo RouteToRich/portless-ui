@@ -440,6 +440,11 @@ function OriginOpportunityCard({
 
 // ── Party card: identity + contact + screening (Apify enrichment) ───────────
 
+/** Only an http(s) URL becomes a link (an evidence URL comes from a third-party actor). */
+function safeHttpUrl(url: string | null | undefined): string | null {
+  return url && /^https?:\/\//i.test(url) ? url : null;
+}
+
 function sanctionsVariant(status: string | null | undefined) {
   switch (status) {
     case "clear": return "success" as const;
@@ -634,6 +639,21 @@ function PartyCard({ party, dealId }: { party: Party; dealId: string }) {
             <div>
               <p className="text-[10px] text-muted-foreground">Address</p>
               <p className="text-xs">{party.address}</p>
+              {party.address_history && party.address_history.length > 0 && (() => {
+                const last = party.address_history[party.address_history.length - 1];
+                return (
+                  <p
+                    className="text-[10px] text-amber-600 dark:text-amber-400"
+                    title={party.address_history
+                      .map((h) => `${h.address} (${h.source ?? "unknown source"}, replaced ${new Date(h.replaced_at).toLocaleString()})`)
+                      .join("\n")}
+                  >
+                    Changed {new Date(last.replaced_at).toLocaleDateString()}
+                    {party.address_source ? ` by ${party.address_source}` : ""} — was “{last.address}”
+                    {party.address_history.length > 1 ? ` (+${party.address_history.length - 1} earlier)` : ""}
+                  </p>
+                );
+              })()}
             </div>
           )}
           {party.gstin && (
@@ -720,6 +740,17 @@ function PartyCard({ party, dealId }: { party: Party; dealId: string }) {
             <span className="text-[10px] text-muted-foreground">
               screened {timeAgo(party.sanctions_checked_at)}
             </span>
+          )}
+          {safeHttpUrl(party.sanctions_evidence_url) && (
+            <a
+              href={safeHttpUrl(party.sanctions_evidence_url)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-primary hover:underline"
+              title="The screening provider's evidence certificate for this result"
+            >
+              screening certificate
+            </a>
           )}
         </div>
         {party.sanctions_reason && sanctions !== "clear" && (

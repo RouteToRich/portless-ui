@@ -11,8 +11,10 @@ import {
   Inbox,
   Mail,
   XCircle,
+  MinusCircle,
   Zap,
 } from "lucide-react";
+import { approvalStatusLabel, approvalStatusVariant, isSuperseded, supersededText } from "@/lib/approvals";
 import { cn, fmtUSD, timeAgo, countdown } from "@/lib/utils";
 import type { ApprovalRecord } from "@/api/types";
 import { useApprovals, useApprovalStream, useNegotiationEmails } from "@/api/hooks";
@@ -24,16 +26,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-function statusVariant(status: string): "warning" | "success" | "destructive" | "secondary" | "outline" {
-  switch (status) {
-    case "PENDING": return "warning";
-    case "APPROVED":
-    case "AUTO_APPROVED": return "success";
-    case "REJECTED": return "destructive";
-    case "TIMED_OUT": return "secondary";
-    default: return "outline";
-  }
-}
 
 function actionLabel(action: string): string {
   return action.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
@@ -74,8 +66,8 @@ function ApprovalRow({ approval, isSelected, onClick }: ApprovalRowProps) {
             </span>
           )}
         </div>
-        <Badge variant={statusVariant(approval.status)} className="text-[10px] shrink-0">
-          {approval.status}
+        <Badge variant={approvalStatusVariant(approval)} className="text-[10px] shrink-0">
+          {approvalStatusLabel(approval)}
         </Badge>
       </div>
 
@@ -421,11 +413,15 @@ export function ApprovalsInbox() {
                     <div className="flex items-center gap-2">
                       {selected.status === "APPROVED" || selected.status === "AUTO_APPROVED" ? (
                         <CheckCircle2 className="w-4 h-4 text-[#2ec28a]" />
+                      ) : isSuperseded(selected) ? (
+                        <MinusCircle className="w-4 h-4 text-muted-foreground" />
                       ) : (
                         <XCircle className="w-4 h-4 text-[#ff5d6c]" />
                       )}
                       <span className="text-sm font-medium">
-                        {selected.status} by {selected.resolved_by ?? "System"}
+                        {isSuperseded(selected)
+                          ? supersededText(selected)
+                          : `${selected.status} by ${selected.resolved_by ?? "System"}`}
                       </span>
                       <span className="text-xs text-muted-foreground ml-auto">
                         {timeAgo(selected.resolved_at)}

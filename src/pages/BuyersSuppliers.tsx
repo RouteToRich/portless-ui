@@ -19,6 +19,7 @@ import type { Counterparty, CounterpartyRelationship, ValidationStatus } from "@
 import { useAuth } from "@/lib/auth";
 import { FlagChips, ScanReportCard } from "@/pages/OpportunityRadar";
 import { ValidationBadge } from "@/components/ValidationBadge";
+import { ScreeningReviewCard } from "@/components/directory/ScreeningReviewCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -727,6 +728,7 @@ export function BuyersSuppliers() {
         </CardContent>
       </Card>
 
+      <ScreeningReviewCard />
       <ScanReportCard />
 
       <Card>
