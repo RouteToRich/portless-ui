@@ -962,6 +962,8 @@ export interface Counterparty {
   // Staff decisions on a sanctions "review" result (audit trail, oldest first).
   screening_reviews?: ScreeningReview[];
   notes?: CompanyNote[];
+  /** Facts staff entered for a supplier added by hand (source "manual"). */
+  manual?: Record<string, unknown> | null;
   /** Where PortLess stands with the company across every prospect and deal. */
   relationship?: CounterpartyRelationship | null;
   /** 0–100: who to work with first. */

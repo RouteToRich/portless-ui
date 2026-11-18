@@ -22,6 +22,7 @@ import { FlagChips, ScanReportCard } from "@/pages/OpportunityRadar";
 import { ValidationBadge } from "@/components/ValidationBadge";
 import { ScreeningReviewCard } from "@/components/directory/ScreeningReviewCard";
 import { DuplicatesCard } from "@/components/directory/DuplicatesCard";
+import { SupplierFormDialog, SupplierImportDialog } from "@/components/directory/ManualSupplierDialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -606,6 +607,8 @@ export function BuyersSuppliers() {
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const clean = useCleanDirectory();
   const { user } = useAuth();
   const [worldwide, setWorldwide] = useState(getWorldwideSearch);
@@ -818,6 +821,14 @@ export function BuyersSuppliers() {
         </CardContent>
       </Card>
 
+      {user?.is_portless && tab === "supplier" && (
+        <div className="flex gap-2">
+          <Button size="sm" className="h-8 text-xs" onClick={() => setAdding(true)}>Add supplier</Button>
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setImporting(true)}>Import CSV</Button>
+        </div>
+      )}
+      {adding && <SupplierFormDialog open onClose={() => setAdding(false)} />}
+      <SupplierImportDialog open={importing} onClose={() => setImporting(false)} />
       <ScreeningReviewCard />
       {user?.is_portless && <DuplicatesCard role={tab} />}
       <ScanReportCard />

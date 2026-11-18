@@ -147,6 +147,12 @@ export const SourcingApi = {
 };
 
 export const DealsApi = {
+  /** Scans → prospects → interested → matched → PI → paid (counts, conversion, median days, cost). */
+  funnel: (days = 90) => api.get<{
+    days: number; steps: { step: string; count: number; conversion_pct: number | null; median_days: number | null }[];
+    cost: { apify_scan_usd: number; emails_sent: number; apify_usd_per_paid_deal: number | null };
+    biggest_drop: { step: string; conversion_pct: number } | null;
+  }>("/deals/funnel", { params: { days } }).then((r) => r.data),
   /** Concession steps from our last offer to the walk-away price when the buyer counters. */
   concessionLadder: (dealId: string) => api.get<{
     ask: number; walk_away: number; counter?: number | null; stop: number; note: string; margin_floor_pct: number;
@@ -282,6 +288,15 @@ export interface CounterpartyFilters {
 }
 
 // Every buyer / supplier a scan found — with or without an opportunity or deal.
+/** A local supplier added by hand (services/trade_min/manual_suppliers.py). */
+export interface ManualSupplierInput {
+  name: string; contact_person?: string; email?: string; phone?: string; whatsapp?: string; website?: string;
+  address?: string; country?: string; gstin?: string; iec?: string; udyam?: string; fssai?: string; apeda?: string;
+  hs_codes?: string | string[]; grades?: string | string[]; capacity_mt_per_month?: number; moq_mt?: number;
+  usual_price?: number; price_currency?: "INR" | "USD"; price_basis?: "FOB" | "EXW"; port_of_loading?: string;
+  port_km?: number; bank_name?: string; bank_ifsc?: string; bank_account_last4?: string;
+}
+
 export const CounterpartiesApi = {
   list: (role: "buyer" | "supplier", filters: CounterpartyFilters = {}) =>
     api
@@ -302,6 +317,24 @@ export const CounterpartiesApi = {
       { text, remind_at: remindAt || null }).then((r) => r.data),
   noteDone: (role: "buyer" | "supplier", id: string, noteId: string) =>
     api.post<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/notes/${noteId}/done`).then((r) => r.data),
+  /** Add a supplier by hand (checks run on save); 409 = duplicate unless force. */
+  addSupplier: (body: ManualSupplierInput, force = false) =>
+    api.post<Counterparty>("/trade-min/suppliers", body, { params: force ? { force: true } : {} }).then((r) => r.data),
+  /** Supply first: a prospect for this supplier's product in a market, with the directory's buyers. */
+  startProspect: (id: string, market: string, hsCode?: string, quantityMt?: number) =>
+    api.post<{ deal_id: string; buyers: number; introductions: number; hs_code: string; market: string }>(
+      `/trade-min/suppliers/${encodeURIComponent(id)}/start-prospect`,
+      { market, hs_code: hsCode || null, quantity_mt: quantityMt || null }).then((r) => r.data),
+  editSupplier: (id: string, body: ManualSupplierInput) =>
+    api.put<Counterparty>(`/trade-min/suppliers/${encodeURIComponent(id)}`, body).then((r) => r.data),
+  deleteSupplier: (id: string) => api.delete(`/trade-min/suppliers/${encodeURIComponent(id)}`).then(() => true),
+  /** CSV import; dry run reports without saving or running paid checks. */
+  importSuppliers: (csv: string, dryRun: boolean) =>
+    api.post<{ dry_run: boolean; accepted: { row: number; name: string }[];
+      duplicates: { row: number; name: string; existing: string; why?: string }[];
+      invalid: { row: number; name?: string | null; errors: string[] }[];
+      created: { row: number; id: string; check: string }[]; checks_note?: string | null }>(
+      "/trade-min/suppliers/import", csv, { params: { dry_run: dryRun }, headers: { "Content-Type": "text/csv" } }).then((r) => r.data),
   /** Probable duplicate companies (same company e-mail domain, phone or name in one country). */
   duplicates: (role: "buyer" | "supplier") =>
     api.get<{ ids: string[]; names: string[]; reasons: string[]; keep_suggested: string }[]>(

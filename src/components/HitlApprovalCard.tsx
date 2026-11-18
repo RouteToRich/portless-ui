@@ -17,7 +17,7 @@ import { approvalStatusLabel, approvalStatusVariant, isSuperseded, supersededTex
 import { cn, fmtUSD, countdown, timeAgo } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { ApprovalRecord } from "@/api/types";
-import { useResolveApproval } from "@/api/hooks";
+import { useResolveApproval, useDealLedger } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -133,6 +133,40 @@ function numv(v: unknown): number | null {
 function str(v: unknown): string | null {
   if (v == null || v === "") return null;
   return typeof v === "number" ? String(v) : String(v);
+}
+
+const MONEY_CONTEXT_ACTIONS = new Set(["RELEASE_ESCROW_TRANCHE", "RELEASE_SUPPLIER_PAYOUT", "CONFIRM_BUYER_ACCEPTANCE"]);
+
+/** The deal's escrow at a glance next to a money gate: the tranche order (released / this one /
+ *  still to come) and, for payouts, what is available and what is held back. */
+function MoneyContext({ dealId, action, payload }: { dealId: string; action: string; payload: Record<string, unknown> }) {
+  const { data: ledger } = useDealLedger(MONEY_CONTEXT_ACTIONS.has(action) ? dealId : "");
+  if (!MONEY_CONTEXT_ACTIONS.has(action) || !ledger) return null;
+  const current = String(payload.tranche_id ?? "");
+  return (
+    <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs space-y-1.5" data-testid="money-context">
+      <p className="font-semibold">Escrow of this deal</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(ledger.tranches ?? []).map((t) => {
+          const released = t.status === "RELEASED";
+          const isThis = t.tranche_id === current;
+          return (
+            <span key={t.tranche_id} title={`${t.trigger ?? ""} · ${fmtUSD(t.amount)}`}
+              className={cn("rounded px-1.5 py-0.5 border tabular-nums",
+                released ? "border-[#2ec28a]/50 text-[#2ec28a]" : isThis ? "border-primary bg-primary/10 font-semibold" : "border-border text-muted-foreground")}>
+              {t.tranche_id} {released ? "✓" : isThis ? "← this" : ""} {Math.round((t.pct ?? 0) * 100)}%
+            </span>
+          );
+        })}
+      </div>
+      <p className="text-muted-foreground">
+        Funded {fmtUSD(ledger.funded_amount ?? ledger.principal)} · released {fmtUSD(ledger.released_total)} · paid to the supplier {fmtUSD(ledger.payouts_total)}
+        {" · "}available for payout <span className="text-foreground font-medium">{fmtUSD(ledger.available_for_payout)}</span>
+        {(ledger.retained_until_acceptance ?? 0) > 0 && <> · held back until acceptance {fmtUSD(ledger.retained_until_acceptance ?? 0)}</>}
+      </p>
+      {!ledger.reconciled && <p className="text-[#ff5d6c]">Ledger not reconciled: {(ledger.issues ?? []).join("; ")}</p>}
+    </div>
+  );
 }
 
 function PayloadDetails({ action, payload }: { action: string; payload: Record<string, unknown> }) {
@@ -544,6 +578,9 @@ export function HitlApprovalCard({
 
             {/* Money / risk action details from the saga payload */}
             <PayloadDetails action={approval.action} payload={approval.callback_payload ?? {}} />
+            {approval.deal_id && (
+              <MoneyContext dealId={approval.deal_id} action={approval.action} payload={approval.callback_payload ?? {}} />
+            )}
 
             {/* Risk flags */}
             {approval.risk_flags.length > 0 && (

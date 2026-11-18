@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { TrendingUp, DollarSign, Layers, Filter, Lock, Wallet, Scale, AlertTriangle } from "lucide-react";
 import { cn, fmtUSD, fmtPct } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { DealsApi } from "@/api/endpoints";
 import type { DealStatus, DealLedger } from "@/api/types";
 import { useDeals, useEscrowLedgers } from "@/api/hooks";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -25,6 +27,49 @@ function ledgerStatusVariant(status: string | null | undefined) {
 // Escrow ledgers across every deal — the cash view the deal-margin estimates
 // above cannot give: what is held, what PortLess actually received, what went
 // to suppliers, and whether every ledger reconciles.
+const FUNNEL_LABEL: Record<string, string> = {
+  opportunities: "Opportunities", prospects: "Prospects", interested: "Buyer interested", matched: "Matched",
+  pi: "PI sent", paid: "Paid",
+};
+
+/** Where deals drop out between the radar and the money, and what the way there costs. */
+function FunnelCard() {
+  const [days, setDays] = useState(90);
+  const { data } = useQuery({ queryKey: ["deals", "funnel", days], queryFn: () => DealsApi.funnel(days) });
+  if (!data) return null;
+  const top = Math.max(1, ...data.steps.map((s) => s.count));
+  return (
+    <Card data-testid="funnel">
+      <CardContent className="pt-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium">Funnel</p>
+          <select className="ml-auto h-7 rounded-md border border-border bg-background px-1.5 text-[11px]" value={days}
+            onChange={(e) => setDays(Number(e.target.value))}>
+            {[30, 90, 180, 365].map((d) => <option key={d} value={d}>last {d} days</option>)}
+          </select>
+        </div>
+        {data.steps.map((s) => (
+          <div key={s.step} className="flex items-center gap-2 text-xs">
+            <span className="w-32 shrink-0">{FUNNEL_LABEL[s.step] ?? s.step}</span>
+            <div className="flex-1 h-4 rounded bg-secondary overflow-hidden">
+              <div className={cn("h-full", data.biggest_drop?.step === s.step ? "bg-[#f5a623]" : "bg-primary/70")}
+                style={{ width: `${(s.count / top) * 100}%` }} />
+            </div>
+            <span className="w-10 text-right tabular-nums font-medium">{s.count}</span>
+            <span className="w-14 text-right tabular-nums text-muted-foreground">{s.conversion_pct != null ? `${s.conversion_pct}%` : ""}</span>
+            <span className="w-16 text-right tabular-nums text-muted-foreground">{s.median_days ? `${s.median_days} d` : ""}</span>
+          </div>
+        ))}
+        <p className="text-[11px] text-muted-foreground">
+          Scan cost {fmtUSD(data.cost.apify_scan_usd)} · {data.cost.emails_sent} e-mails sent
+          {data.cost.apify_usd_per_paid_deal != null ? ` · ${fmtUSD(data.cost.apify_usd_per_paid_deal)} scan cost per paid deal` : ""}
+          {data.biggest_drop ? ` · biggest drop: ${FUNNEL_LABEL[data.biggest_drop.step] ?? data.biggest_drop.step} (${data.biggest_drop.conversion_pct}%)` : ""}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Every PortLess cost line summed across deals (from each deal's escrow ledger), so the
  *  biggest cost is visible — not only the total. */
 function CostTable() {
@@ -422,6 +467,7 @@ export function MoneyMargin() {
       {/* Escrow ledgers — cash actually held / released / paid out */}
       <EscrowLedgers />
       <CostTable />
+      <FunnelCard />
 
       {/* Table */}
       {isLoading ? (

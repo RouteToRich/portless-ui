@@ -17,6 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { HsCode } from "@/components/HsCode";
 import { ValidationBadge } from "@/components/ValidationBadge";
+import { SupplierFormDialog } from "@/components/directory/ManualSupplierDialogs";
+import { CounterpartiesApi } from "@/api/endpoints";
 import { FlagChips } from "@/pages/OpportunityRadar";
 
 type Role = "buyer" | "supplier";
@@ -378,6 +380,7 @@ export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: str
   const { user } = useAuth();
   const navigate = useNavigate();
   const [dealId, setDealId] = useState("");
+  const [editing, setEditing] = useState(false);
   const c = p?.company;
 
   async function addTo(target: string) {
@@ -535,6 +538,34 @@ export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: str
                 </ul>
               </section>
             )}
+
+            {user?.is_portless && role === "supplier" && (
+              <section className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Supply first: find a buyer for this supplier's lot</span>
+                <Button size="sm" className="h-7 text-[11px] ml-auto" onClick={async () => {
+                  const market = window.prompt("Which market? (2-letter country code, e.g. AE)")?.trim().toUpperCase();
+                  if (!market) return;
+                  const qty = Number(window.prompt("Quantity in MT? (empty = default)") || "0");
+                  try {
+                    const out = await CounterpartiesApi.startProspect(c.id, market, undefined, qty || undefined);
+                    toast.success(`Prospect ${out.deal_id} started`, {
+                      description: `${out.buyers} buyer(s) from the directory, ${out.introductions} introduction(s) going out`,
+                    });
+                    navigate(`/deals/${out.deal_id}`);
+                  } catch (e: unknown) {
+                    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                    toast.error(msg ?? "Could not start the prospect");
+                  }
+                }}>Start a prospect</Button>
+              </section>
+            )}
+            {user?.is_portless && role === "supplier" && c.source === "manual" && (
+              <section className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Added by hand{c.manual?.added_by ? ` by ${String(c.manual.added_by)}` : ""}</span>
+                <Button size="sm" variant="outline" className="h-7 text-[11px] ml-auto" onClick={() => setEditing(true)}>Edit</Button>
+              </section>
+            )}
+            {editing && <SupplierFormDialog open existing={c} onClose={() => setEditing(false)} />}
 
             {user?.is_portless && <NotesSection role={role} company={c} />}
 
