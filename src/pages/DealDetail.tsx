@@ -54,6 +54,8 @@ import {
   useDealProfit,
   useOpportunity,
   useUsdInr,
+  useConcessionLadder,
+  useSupplierCommitment,
   type EscrowActionKind,
 } from "@/api/hooks";
 import { FilesApi } from "@/api/endpoints";
@@ -562,6 +564,8 @@ function PartyEditForm({
 function PartyCard({ party, dealId }: { party: Party; dealId: string }) {
   const [editing, setEditing] = useState(false);
   const sanctions = party.sanctions_status ?? "unchecked";
+  const { data: commitment } = useSupplierCommitment(dealId, party.role === "supplier");
+  const waitsForAddress = party.role === "supplier" && commitment?.facility_address_status === "awaiting";
 
   return (
     <Card className={cn(sanctions === "block" && "border-[#ff5d6c]/50")}>
@@ -636,6 +640,17 @@ function PartyCard({ party, dealId }: { party: Party; dealId: string }) {
               <p className="flex items-center gap-1 text-xs font-mono">
                 <Phone className="w-3 h-3 text-muted-foreground" /> {party.phone}
               </p>
+            </div>
+          )}
+          {waitsForAddress && (
+            <div className="rounded-md border border-[#f5a623]/40 bg-[#f5a623]/10 p-2" data-testid="facility-address-wait">
+              <p className="text-[11px] text-[#f5a623] font-medium">The inspection waits for the facility address</p>
+              <p className="text-[10px] text-muted-foreground">
+                The inspector needs the full street address with PIN code
+                {commitment?.facility_address_asked_at ? ` — asked the supplier ${timeAgo(commitment.facility_address_asked_at)}` : ""}.
+                Enter it here (Edit) if you have it: the inspection is booked as soon as it is saved.
+              </p>
+              <Button size="sm" variant="outline" className="h-7 text-[11px] mt-1.5" onClick={() => setEditing(true)}>Add the address</Button>
             </div>
           )}
           {party.address && (
@@ -1186,6 +1201,37 @@ function OverviewTab({ dealId }: { dealId: string }) {
   );
 }
 
+/** When the buyer counters: how to concede in 2-3 shrinking steps without going past the floor. */
+function ConcessionLadderCard({ dealId }: { dealId: string }) {
+  const { data: l, isError } = useConcessionLadder(dealId);
+  if (isError || !l) return null;
+  return (
+    <Card data-testid="concession-ladder">
+      <CardHeader>
+        <CardTitle>Concession ladder</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-xs">
+        <p className="text-muted-foreground">
+          Our offer {fmtUSD(l.ask)} · buyer {l.counter != null ? fmtUSD(l.counter) : "has not countered"} · walk-away{" "}
+          <span className="font-medium text-foreground">{fmtUSD(l.walk_away)}</span> (margin floor {l.margin_floor_pct}%)
+        </p>
+        {l.steps.length ? (
+          <ol className="space-y-1">
+            {l.steps.map((s) => (
+              <li key={s.move} className="flex items-center justify-between rounded-md bg-secondary/50 px-2 py-1">
+                <span>Move {s.move}</span>
+                <span className="tabular-nums font-medium">{fmtUSD(s.price)}</span>
+                <span className="text-muted-foreground tabular-nums">−{fmtUSD(s.concede_usd)}</span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <p className="text-[11px] text-muted-foreground">{l.note}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function NegotiationTab({ dealId }: { dealId: string }) {
   const { data: sessions, isLoading: sessionsLoading } = useNegotiationSessions(dealId);
   const primarySession = sessions?.[0];
@@ -1255,6 +1301,7 @@ function NegotiationTab({ dealId }: { dealId: string }) {
 
       {/* Right: Session info */}
       <div className="flex-[2] space-y-3 min-w-0">
+        <ConcessionLadderCard dealId={dealId} />
         {/* Session summary */}
         <Card>
           <CardHeader>
@@ -2430,6 +2477,8 @@ function PaymentsTab({ dealId }: { dealId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* The estimate next to the money that moved (the ledger below) */}
+      <ProfitBreakdown dealId={dealId} />
       {isLoading ? (
         <Skeleton className="h-48 w-full rounded-xl" />
       ) : !escrow ? (

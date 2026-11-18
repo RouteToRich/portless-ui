@@ -368,6 +368,12 @@ export interface ProspectSummary {
   supplier_cut_needed_usd_per_mt?: number | null;
   radar_expected_profit_usd?: number | null;
   radar_margin_usd_per_mt?: number | null;
+  // Effort spent on it — so prospects that eat time without moving show up.
+  emails_sent?: number;
+  replies?: number;
+  operator_touches?: number;
+  apify_cost_usd?: number | null;
+  busy_not_moving?: boolean;
   // Parked from the desk: no reminders until unparked (or parked_until passes).
   parked?: boolean;
   parked_until?: string | null;
@@ -906,6 +912,17 @@ export interface ScreeningReview {
   evidence_url?: string | null;
 }
 
+// A staff note on a company, optionally with a follow-up date (company_notes.py).
+export interface CompanyNote {
+  note_id: string;
+  text: string;
+  by: string;
+  at: string;
+  remind_at?: string | null;
+  done_at?: string | null;
+  done_by?: string | null;
+}
+
 export interface Counterparty {
   id: string;
   role: "buyer" | "supplier";
@@ -944,6 +961,7 @@ export interface Counterparty {
   dnc_at?: string | null;
   // Staff decisions on a sanctions "review" result (audit trail, oldest first).
   screening_reviews?: ScreeningReview[];
+  notes?: CompanyNote[];
   /** Where PortLess stands with the company across every prospect and deal. */
   relationship?: CounterpartyRelationship | null;
   /** 0–100: who to work with first. */
@@ -1009,6 +1027,9 @@ export interface CounterpartyAction {
 export interface CounterpartyProfile {
   company: Counterparty;
   engagements: CounterpartyEngagement[];
+  /** Every e-mail with the company across its prospects and deals, newest first. */
+  correspondence?: { deal_id: string; email_id: string; direction: string; address: string; subject: string;
+    status: string; kind?: string | null; at?: string | null }[];
   timeline: CounterpartyEvent[];
   open_prospects: { deal_id: string; hs_code: string; market?: string | null; buyers: number; quotes: number; created_at?: string | null }[];
   next_actions: CounterpartyAction[];
@@ -1613,6 +1634,10 @@ export interface DealLedger {
   supplier_owed?: number | null;
   supplier_balance_due?: number | null;
   realized_margin?: number | null;
+  /** PortLess's own costs booked per deal (freight, inspection, insurance, escrow fee, CHA, documents …). */
+  portless_costs?: Record<string, number>;
+  portless_costs_basis?: Record<string, string>;
+  portless_costs_total?: number;
   tranches: Tranche[];
   payouts: PayoutRecord[];
   inspection_deadline?: string | null;

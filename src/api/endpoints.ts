@@ -114,6 +114,8 @@ export const MatchApi2 = {
   retrySends: (dealId: string) => api.post<Record<string, number>>(`/deals/${dealId}/retry-sends`).then((r) => r.data),
   drop: (dealId: string, reason: string) => api.post(`/deals/${dealId}/prospect/drop`, { reason }).then((r) => r.data),
   evaluate: (dealId: string) => api.post(`/deals/${dealId}/match/evaluate`).then((r) => r.data),
+  // Ask the other quoted suppliers to match or beat the best quote (opens a SEND_BEST_AND_FINAL gate).
+  bestAndFinal: (dealId: string) => api.post<{ approval_id: string }>(`/deals/${dealId}/match/best-and-final`).then((r) => r.data),
   indicativeOffer: (dealId: string, candidateId: string, offerId: string) =>
     api.post<{ approval_id: string }>(`/deals/${dealId}/match/indicative-offer`, { candidate_id: candidateId, offer_id: offerId })
       .then((r) => r.data),
@@ -145,6 +147,20 @@ export const SourcingApi = {
 };
 
 export const DealsApi = {
+  /** Concession steps from our last offer to the walk-away price when the buyer counters. */
+  concessionLadder: (dealId: string) => api.get<{
+    ask: number; walk_away: number; counter?: number | null; stop: number; note: string; margin_floor_pct: number;
+    steps: { move: number; price: number; concede_usd: number }[];
+  }>(`/deals/${dealId}/concession-ladder`).then((r) => r.data),
+  /** Buy price, sell price and profit per deal (firm from PI / PO / settlement, else estimates). */
+  boardMoney: () => api.get<Record<string, {
+    sell_usd_per_mt?: number | null; sell_basis: string; buy_usd_per_mt?: number | null; buy_basis: string;
+    quantity_mt?: number | null; profit_usd?: number | null; profit_basis: string;
+  }>>("/deals/board/money").then((r) => r.data),
+  /** Supplier commitment: firm order request, PO acknowledgement, goods-ready date, facility address wait. */
+  supplierCommitment: (dealId: string) =>
+    api.get<{ status?: string; facility_address_status?: string | null; facility_address_asked_at?: string | null }>(
+      `/deals/${dealId}/supplier-commitment`).then((r) => r.data),
   /** USD/INR the console shows beside USD supplier prices (source live / fallback). */
   usdInr: () => api.get<{ currency: string; rate: number | null; source: string }>("/deals/fx/usd-inr").then((r) => r.data),
   list: (status?: string) =>
@@ -280,6 +296,29 @@ export const CounterpartiesApi = {
   setContactPreference: (role: "buyer" | "supplier", id: string, doNotContact: boolean, reason?: string) =>
     api.put<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/contact-preference`,
       { do_not_contact: doNotContact, reason }).then((r) => r.data),
+  /** A staff note on a company (optional follow-up date); also goes to knowledge memory. */
+  addNote: (role: "buyer" | "supplier", id: string, text: string, remindAt?: string) =>
+    api.post<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/notes`,
+      { text, remind_at: remindAt || null }).then((r) => r.data),
+  noteDone: (role: "buyer" | "supplier", id: string, noteId: string) =>
+    api.post<Counterparty>(`/trade-min/${role}s/${encodeURIComponent(id)}/notes/${noteId}/done`).then((r) => r.data),
+  /** Probable duplicate companies (same company e-mail domain, phone or name in one country). */
+  duplicates: (role: "buyer" | "supplier") =>
+    api.get<{ ids: string[]; names: string[]; reasons: string[]; keep_suggested: string }[]>(
+      `/trade-min/directory/${role}s/duplicates`).then((r) => r.data),
+  /** Fold ``merge`` into ``keep`` (staff). */
+  merge: (role: "buyer" | "supplier", keep: string, merge: string[]) =>
+    api.post<Counterparty>(`/trade-min/directory/${role}s/merge`, { keep, merge }).then((r) => r.data),
+  /** Bulk action on selected companies; a check without confirm only answers its Apify cost. */
+  bulk: (role: "buyer" | "supplier", body: { ids: string[]; action: "check" | "do_not_contact" | "add_to_prospect"; reason?: string; deal_id?: string; confirm?: boolean }) =>
+    api.post<{ action: string; done?: number; failed?: number; confirm_needed?: boolean; runs_estimate?: number; note?: string; results?: { id: string; ok: boolean; detail: string }[] }>(
+      `/trade-min/directory/${role}s/bulk`, body).then((r) => r.data),
+  /** The filtered directory as a CSV file (same filters as the page). */
+  exportCsv: (role: "buyer" | "supplier", filters: Record<string, string | boolean | undefined>) =>
+    api.get<Blob>(`/trade-min/directory/${role}s/export.csv`, {
+      params: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "" && v !== false)),
+      responseType: "blob",
+    }).then((r) => r.data),
   /** Companies whose sanctions screening returned "review" — waiting for a staff decision. */
   screeningReview: () => api.get<Counterparty[]>("/trade-min/screening/review").then((r) => r.data),
   /** Clear or fail a "review" screening with a reason (staff; kept on the record). */

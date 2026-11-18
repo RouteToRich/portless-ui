@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import {
-  useAddToProspect, useContactPreference, useCounterpartyProfile, useDirectorySummary, useValidateCounterparty,
+  useAddToProspect, useCompanyNotes, useContactPreference, useCounterpartyProfile, useDirectorySummary, useValidateCounterparty,
 } from "@/api/hooks";
 import type { Counterparty, CounterpartyEvent, DirectoryRoleSummary } from "@/api/types";
 import { useAuth } from "@/lib/auth";
@@ -312,6 +312,64 @@ function Timeline({ events }: { events: CounterpartyEvent[] }) {
   );
 }
 
+/** Staff notes on the company and their follow-up dates (due ones also reach the digest). */
+function NotesSection({ role, company }: { role: Role; company: Counterparty }) {
+  const notes = useCompanyNotes();
+  const [text, setText] = useState("");
+  const [remind, setRemind] = useState("");
+  const list = [...(company.notes ?? [])].reverse();
+  async function save() {
+    if (!text.trim()) return;
+    try {
+      await notes.add.mutateAsync({ role, id: company.id, text: text.trim(),
+        remindAt: remind ? new Date(`${remind}T09:00:00`).toISOString() : undefined });
+      setText("");
+      setRemind("");
+      toast.success("Note saved");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg ?? "Note not saved");
+    }
+  }
+  return (
+    <section className="space-y-2" data-testid="company-notes">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Notes and follow-ups</p>
+      <textarea className="w-full rounded-md border border-border bg-background p-2 text-xs" rows={2}
+        placeholder="A call, a meeting, what they said…" value={text} onChange={(e) => setText(e.target.value)} />
+      <div className="flex items-center gap-2">
+        <label className="text-[11px] text-muted-foreground">Remind me on</label>
+        <input type="date" className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px]"
+          value={remind} onChange={(e) => setRemind(e.target.value)} />
+        <Button size="sm" className="h-7 text-xs ml-auto" onClick={save} disabled={notes.add.isPending || !text.trim()}>Add note</Button>
+      </div>
+      {list.length > 0 && (
+        <ul className="space-y-1.5">
+          {list.map((n) => {
+            const due = n.remind_at && !n.done_at && new Date(n.remind_at) <= new Date();
+            return (
+              <li key={n.note_id} className="rounded-md border border-border p-2 text-xs">
+                <p className="whitespace-pre-wrap">{n.text}</p>
+                <p className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span>{n.by} · {timeAgo(n.at)}</span>
+                  {n.remind_at && (
+                    <span className={cn(due && "text-[#f5a623] font-medium")}>
+                      {n.done_at ? "follow-up done" : `follow up ${new Date(n.remind_at).toLocaleDateString()}${due ? " (due)" : ""}`}
+                    </span>
+                  )}
+                  {n.remind_at && !n.done_at && (
+                    <button className="ml-auto text-primary hover:underline"
+                      onClick={() => notes.done.mutate({ role, id: company.id, noteId: n.note_id })}>Mark done</button>
+                  )}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** The company's profile as a side panel: facts, score basis, actions, prospects, timeline. */
 export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: string | null; onClose: () => void }) {
   const { data: p, isLoading } = useCounterpartyProfile(role, id);
@@ -454,6 +512,31 @@ export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: str
                 ))}
               </section>
             )}
+
+            {(p.correspondence?.length ?? 0) > 0 && (
+              <section data-testid="company-correspondence">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                  E-mails ({p.correspondence!.length})
+                </p>
+                <ul className="space-y-1">
+                  {p.correspondence!.slice(0, 20).map((m) => (
+                    <li key={m.email_id} className="text-xs flex items-start gap-2">
+                      <span className={cn("shrink-0 text-[10px] font-medium", m.direction === "inbound" ? "text-[#2ec28a]" : "text-[#4f8cff]")}>
+                        {m.direction === "inbound" ? "IN" : "OUT"}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate" title={m.subject}>{m.subject}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {m.address} · {m.deal_id}{m.at ? ` · ${timeAgo(m.at)}` : ""}{m.status && m.status !== "sent" && m.status !== "received" ? ` · ${m.status}` : ""}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {user?.is_portless && <NotesSection role={role} company={c} />}
 
             {/* Timeline */}
             <section>

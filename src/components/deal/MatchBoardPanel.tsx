@@ -352,7 +352,7 @@ function reqSummary(r?: BuyerRequirement | null) {
 export function MatchBoardPanel({ deal }: { deal: Deal }) {
   const { data: fx } = useUsdInr();
   const { data: board, isLoading } = useMatchBoard(deal.deal_id);
-  const { evaluate } = useMatchActions(deal.deal_id);
+  const { evaluate, bestAndFinal } = useMatchActions(deal.deal_id);
   const [editing, setEditing] = useState<MatchBoard["buyers"][number] | null>(null);
   const [adding, setAdding] = useState(false);
   const [noting, setNoting] = useState(false);
@@ -364,6 +364,17 @@ export function MatchBoardPanel({ deal }: { deal: Deal }) {
       toast.success(n ? `${n} approval${n === 1 ? "" : "s"} opened` : "Re-scored — nothing to propose yet");
     } catch (e) {
       toast.error(errText(e, "Could not re-score"));
+    }
+  }
+
+  async function askBestAndFinal() {
+    try {
+      await bestAndFinal.mutateAsync();
+      toast.success("Best-and-final request waiting for approval", {
+        description: "The other quoted suppliers are asked to match or beat the best quote — the competitor is never named.",
+      });
+    } catch (e) {
+      toast.error(errText(e, "Could not open the best-and-final request"));
     }
   }
 
@@ -383,6 +394,12 @@ export function MatchBoardPanel({ deal }: { deal: Deal }) {
             <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => setAdding(true)}>
               <Plus className="w-3.5 h-3.5" /> Add offer
             </Button>
+            {board?.best_quote_usd_per_mt != null && board.quote_spread_pct != null && (
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={askBestAndFinal}
+                disabled={bestAndFinal.isPending} title="Ask the other quoted suppliers to match or beat the best quote">
+                <Send className="w-3.5 h-3.5" /> Best and final
+              </Button>
+            )}
             <Button size="sm" className="h-8 text-xs gap-1.5" onClick={rescore} disabled={evaluate.isPending}>
               <RefreshCw className="w-3.5 h-3.5" /> Re-score
             </Button>

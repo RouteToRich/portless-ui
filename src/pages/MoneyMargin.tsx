@@ -25,6 +25,56 @@ function ledgerStatusVariant(status: string | null | undefined) {
 // Escrow ledgers across every deal — the cash view the deal-margin estimates
 // above cannot give: what is held, what PortLess actually received, what went
 // to suppliers, and whether every ledger reconciles.
+/** Every PortLess cost line summed across deals (from each deal's escrow ledger), so the
+ *  biggest cost is visible — not only the total. */
+function CostTable() {
+  const { data: ledgers } = useEscrowLedgers();
+  const rows: DealLedger[] = ledgers ?? [];
+  const totals = new Map<string, { total: number; deals: number; actual: number }>();
+  for (const l of rows) {
+    for (const [k, v] of Object.entries(l.portless_costs ?? {})) {
+      const t = totals.get(k) ?? { total: 0, deals: 0, actual: 0 };
+      t.total += v;
+      t.deals += 1;
+      if ((l.portless_costs_basis ?? {})[k] === "actual") t.actual += 1;
+      totals.set(k, t);
+    }
+  }
+  const lines = [...totals.entries()].sort((a, b) => b[1].total - a[1].total);
+  if (!lines.length) return null;
+  const grand = lines.reduce((s, [, t]) => s + t.total, 0);
+  return (
+    <Card data-testid="cost-table">
+      <CardContent className="pt-4">
+        <p className="text-sm font-medium mb-2">PortLess costs by line, across deals</p>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
+              <th className="py-1.5">Cost</th><th className="py-1.5 text-right">Total</th>
+              <th className="py-1.5 text-right">Share</th><th className="py-1.5 text-right">Deals</th>
+              <th className="py-1.5 text-right" title="Deals where the figure is the provider's actual amount, not the estimate">Actual</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map(([k, t]) => (
+              <tr key={k} className="border-b border-border/50">
+                <td className="py-1.5 capitalize">{k.replace(/_/g, " ")}</td>
+                <td className="py-1.5 text-right tabular-nums">{fmtUSD(t.total)}</td>
+                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{grand ? `${((t.total / grand) * 100).toFixed(0)}%` : "—"}</td>
+                <td className="py-1.5 text-right tabular-nums">{t.deals}</td>
+                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{t.actual}/{t.deals}</td>
+              </tr>
+            ))}
+            <tr className="font-medium">
+              <td className="py-1.5">Total</td><td className="py-1.5 text-right tabular-nums">{fmtUSD(grand)}</td><td /><td /><td />
+            </tr>
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
+
 function EscrowLedgers() {
   const { data: ledgers, isLoading, isError } = useEscrowLedgers();
   const rows: DealLedger[] = ledgers ?? [];
@@ -371,6 +421,7 @@ export function MoneyMargin() {
 
       {/* Escrow ledgers — cash actually held / released / paid out */}
       <EscrowLedgers />
+      <CostTable />
 
       {/* Table */}
       {isLoading ? (

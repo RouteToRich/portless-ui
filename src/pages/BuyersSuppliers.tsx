@@ -16,10 +16,12 @@ import {
   useValidateCounterparty,
 } from "@/api/hooks";
 import type { Counterparty, CounterpartyRelationship, ValidationStatus } from "@/api/types";
+import { CounterpartiesApi } from "@/api/endpoints";
 import { useAuth } from "@/lib/auth";
 import { FlagChips, ScanReportCard } from "@/pages/OpportunityRadar";
 import { ValidationBadge } from "@/components/ValidationBadge";
 import { ScreeningReviewCard } from "@/components/directory/ScreeningReviewCard";
+import { DuplicatesCard } from "@/components/directory/DuplicatesCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -260,12 +262,67 @@ function CheckCell({ role, c }: { role: Role; c: Counterparty }) {
   );
 }
 
-function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] }) {
+/** Selected companies → check (asks the Apify cost first), do not contact, add to a prospect. */
+function BulkBar({ role, ids, onDone }: { role: Role; ids: string[]; onDone: () => void }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  if (!ids.length) return null;
+  const run = async (action: "check" | "do_not_contact" | "add_to_prospect") => {
+    setBusy(true);
+    try {
+      let body: Parameters<typeof CounterpartiesApi.bulk>[1] = { ids, action };
+      if (action === "check") {
+        const est = await CounterpartiesApi.bulk(role, body);
+        if (est.confirm_needed && !window.confirm(`Check ${ids.length} compan${ids.length === 1 ? "y" : "ies"}? ${est.note ?? ""}`)) return;
+        body = { ...body, confirm: true };
+      } else if (action === "do_not_contact") {
+        const reason = window.prompt(`Why should PortLess never write to these ${ids.length} companies again?`);
+        if (!reason?.trim()) return;
+        body = { ...body, reason: reason.trim() };
+      } else {
+        const dealId = window.prompt("Add to which prospect? (deal id, e.g. DEAL-…)");
+        if (!dealId?.trim()) return;
+        body = { ...body, deal_id: dealId.trim() };
+      }
+      const out = await CounterpartiesApi.bulk(role, body);
+      const failed = (out.results ?? []).filter((r) => !r.ok);
+      toast[failed.length ? "warning" : "success"](`${out.done ?? 0} done, ${out.failed ?? 0} not`, {
+        description: failed.slice(0, 3).map((r) => r.detail).join(" · ") || undefined,
+      });
+      qc.invalidateQueries({ queryKey: ["counterparties"] });
+      qc.invalidateQueries({ queryKey: ["directory-page"] });
+      onDone();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg ?? "Bulk action failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs" data-testid="bulk-bar">
+      <span className="font-medium">{ids.length} selected</span>
+      <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => run("check")}>Check</Button>
+      <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => run("add_to_prospect")}>Add to prospect</Button>
+      <Button size="sm" variant="outline" className="h-7 text-[11px] text-[#ff5d6c]" disabled={busy} onClick={() => run("do_not_contact")}>Do not contact</Button>
+      <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={onDone}>Clear</button>
+    </div>
+  );
+}
+
+function CounterpartyTable({ role, rows, selected, onSelect }: {
+  role: Role; rows: Counterparty[]; selected: Set<string>; onSelect: (ids: string[], on: boolean) => void;
+}) {
+  const all = rows.length > 0 && rows.every((r) => selected.has(r.id));
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+            <th className="py-2 pr-2 w-6">
+              <input type="checkbox" aria-label="Select all on this page" checked={all}
+                onChange={(e) => onSelect(rows.map((r) => r.id), e.target.checked)} />
+            </th>
             <th className="py-2 pr-3 font-semibold">Company</th>
             <th className="py-2 pr-3 font-semibold" title="Who to work with first: check, reachability, engagement, track record, price">Score</th>
             <th className="py-2 pr-3 font-semibold" title="Where PortLess stands with the company across every prospect and deal">Relationship</th>
@@ -282,6 +339,10 @@ function CounterpartyTable({ role, rows }: { role: Role; rows: Counterparty[] })
         <tbody>
           {rows.map((c) => (
             <tr key={c.id} className="border-b border-border/60 align-top hover:bg-secondary/40">
+              <td className="py-2.5 pr-2">
+                <input type="checkbox" aria-label={`Select ${c.name}`} checked={selected.has(c.id)}
+                  onChange={(e) => onSelect([c.id], e.target.checked)} />
+              </td>
               <td className="py-2.5 pr-3 max-w-[240px]">
                 <p className="font-medium truncate" title={c.name}>{c.name}</p>
                 {c.website && (
@@ -394,6 +455,29 @@ function RolePanel({
 }) {
   const [pageSize, setPageSize] = useState(60);
   const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const select = (ids: string[], on: boolean) => setSelected((prev) => {
+    const next = new Set(prev);
+    ids.forEach((id) => (on ? next.add(id) : next.delete(id)));
+    return next;
+  });
+  async function exportCsv() {
+    try {
+      const blob = await CounterpartiesApi.exportCsv(role, {
+        q: q.trim() || undefined, market: market.trim().toUpperCase() || undefined,
+        country: country.trim().toUpperCase() || undefined, hs_code: hs.trim() || undefined,
+        validation: check || undefined, stage: stage || undefined, contactable: contactable || undefined, sort, order,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `portless-${role}s-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Export failed");
+    }
+  }
   const filterKey = [q, market, hs, country, check, stage, contactable, sort, order, pageSize].join("|");
   useEffect(() => setPage(0), [filterKey]);
   const { data, isLoading, isError, refetch, isFetching } = useDirectoryPage(
@@ -466,6 +550,9 @@ function RolePanel({
         </span>
         {isFetching && <RefreshCw className="w-3 h-3 animate-spin" />}
         <span className="ml-auto flex items-center gap-1.5">
+          <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={exportCsv} title="Every company matching the filters, as CSV">
+            Export CSV
+          </Button>
           <select className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px]" value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))} aria-label="Per page">
             {PAGE_SIZES.map((n) => <option key={n} value={n}>{n} per page</option>)}
@@ -484,7 +571,10 @@ function RolePanel({
           {rows.map((c) => <CompanyCard key={c.id} role={role} c={c} onOpen={() => onOpen(c.id)} />)}
         </div>
       ) : (
-        <CounterpartyTable role={role} rows={rows} />
+        <>
+          <BulkBar role={role} ids={[...selected]} onDone={() => setSelected(new Set())} />
+          <CounterpartyTable role={role} rows={rows} selected={selected} onSelect={select} />
+        </>
       )}
       {pages > 1 && (
         <div className="flex justify-center items-center gap-2 pt-2 text-[11px] text-muted-foreground">
@@ -729,6 +819,7 @@ export function BuyersSuppliers() {
       </Card>
 
       <ScreeningReviewCard />
+      {user?.is_portless && <DuplicatesCard role={tab} />}
       <ScanReportCard />
 
       <Card>

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Search, Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { cn, fmtUSD, fmtPct, timeAgo } from "@/lib/utils";
 import type { Deal, DealStatus, QcStatus } from "@/api/types";
-import { useDeals } from "@/api/hooks";
+import { useBoardMoney, useDeals } from "@/api/hooks";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QueryState } from "@/components/QueryState";
 import { DealPipeline } from "@/components/DealPipeline";
@@ -211,6 +211,7 @@ function DealCard({ deal, onClick }: DealCardProps) {
 export function DealBoard() {
   const navigate = useNavigate();
   const { data: deals, isLoading, isError, refetch } = useDeals();
+  const { data: money } = useBoardMoney();
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
 
@@ -435,7 +436,8 @@ export function DealBoard() {
                   ["QC", "text-left w-[140px]"],
                   ["Pipeline", "text-left w-[130px] hidden xl:table-cell"],
                   ["Match", "text-right w-[96px] hidden 2xl:table-cell"],
-                  ["Est. Margin", "text-right w-[110px]"],
+                  ["Buy → Sell /MT", "text-right w-[130px] hidden md:table-cell"],
+                  ["Profit", "text-right w-[110px]"],
                   ["Created", "text-right w-[80px] hidden lg:table-cell"],
                 ].map(([label, cls]) => (
                   <th
@@ -453,7 +455,7 @@ export function DealBoard() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-sm text-muted-foreground">
+                  <td colSpan={11} className="text-center py-12 text-sm text-muted-foreground">
                     No deals match your search
                   </td>
                 </tr>
@@ -516,11 +518,36 @@ export function DealBoard() {
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right text-sm font-medium truncate">
-                        {fmtUSD(deal.est_margin_usd)}
-                        {deal.est_margin_pct != null && (
-                          <span className="ml-1 text-xs text-muted-foreground">{fmtPct(deal.est_margin_pct)}</span>
-                        )}
+                      <td className="px-3 py-3 text-right text-xs hidden md:table-cell"
+                        title="Buy = PO price (else the supplier's quote); sell = PI price (else the buyer's target). Italic = estimate">
+                        {(() => {
+                          const m = money?.[deal.deal_id];
+                          if (!m || (m.buy_usd_per_mt == null && m.sell_usd_per_mt == null)) return <span className="text-muted-foreground">—</span>;
+                          return (
+                            <span className="tabular-nums">
+                              <span className={cn(m.buy_basis !== "firm" && "italic text-muted-foreground")}>{m.buy_usd_per_mt != null ? fmtUSD(m.buy_usd_per_mt) : "—"}</span>
+                              {" → "}
+                              <span className={cn(m.sell_basis !== "firm" && "italic text-muted-foreground")}>{m.sell_usd_per_mt != null ? fmtUSD(m.sell_usd_per_mt) : "—"}</span>
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-3 text-right text-sm font-medium truncate"
+                        title={money?.[deal.deal_id]?.profit_basis === "realised" ? "Realised profit (escrow settled)" : "Estimated profit"}>
+                        {(() => {
+                          const m = money?.[deal.deal_id];
+                          const realised = m?.profit_basis === "realised";
+                          const v = m?.profit_usd ?? deal.est_margin_usd;
+                          return (
+                            <>
+                              <span className={cn(!realised && "italic")}>{fmtUSD(v)}</span>
+                              {!realised && deal.est_margin_pct != null && (
+                                <span className="ml-1 text-xs text-muted-foreground">{fmtPct(deal.est_margin_pct)}</span>
+                              )}
+                              {realised && <span className="ml-1 text-[10px] text-[#2ec28a]">realised</span>}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-3 text-right text-xs text-muted-foreground hidden lg:table-cell">
                         {timeAgo(deal.created_at)}

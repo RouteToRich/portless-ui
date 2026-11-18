@@ -96,6 +96,21 @@ export function useMatchBoard(dealId: string | undefined, enabled = true) {
   });
 }
 
+/** The deal's supplier commitment (is the inspection waiting for the facility address?). */
+export function useSupplierCommitment(dealId: string, enabled = true) {
+  return useQuery({ queryKey: ["supplier-commitment", dealId], queryFn: () => DealsApi.supplierCommitment(dealId), enabled });
+}
+
+/** Buy / sell / profit per deal for the Deal Board. */
+export function useBoardMoney() {
+  return useQuery({ queryKey: ["deals", "board-money"], queryFn: () => DealsApi.boardMoney(), refetchInterval: 60000 });
+}
+
+/** The concession ladder of a deal's negotiation (needs our offer and the supplier's price). */
+export function useConcessionLadder(dealId: string, enabled = true) {
+  return useQuery({ queryKey: ["concession-ladder", dealId], queryFn: () => DealsApi.concessionLadder(dealId), enabled, retry: false });
+}
+
 /** USD/INR for showing an Indian supplier's INR figure beside the USD price (hourly). */
 export function useUsdInr() {
   return useQuery({ queryKey: ["fx", "usd-inr"], queryFn: () => DealsApi.usdInr(), staleTime: 3_600_000 });
@@ -152,7 +167,8 @@ export function useMatchActions(dealId: string) {
     mutationFn: (offer: import("./types").SupplierOffer) => MatchApi2.addOffer(dealId, offer),
     onSuccess: invalidate,
   });
-  return { evaluate, offer, confirm, setRequirement, addOffer };
+  const bestAndFinal = useMutation({ mutationFn: () => MatchApi2.bestAndFinal(dealId), onSuccess: invalidate });
+  return { evaluate, offer, confirm, setRequirement, addOffer, bestAndFinal };
 }
 
 export function useDealRfqs(dealId: string | undefined) {
@@ -202,6 +218,7 @@ export function useUpdateParty(dealId: string) {
       DealsApi.updateParty(dealId, role, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["deal", dealId] });
+      qc.invalidateQueries({ queryKey: ["supplier-commitment", dealId] });
       qc.invalidateQueries({ queryKey: ["deals"] });
     },
   });
@@ -449,6 +466,21 @@ export function useContactPreference() {
       CounterpartiesApi.setContactPreference(role, id, doNotContact, reason),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["counterparties"] }),
   });
+}
+
+/** Notes and follow-ups on a company. */
+export function useCompanyNotes() {
+  const qc = useQueryClient();
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["counterparty-profile"] });
+    qc.invalidateQueries({ queryKey: ["counterparties"] });
+  };
+  return {
+    add: useMutation({ mutationFn: ({ role, id, text, remindAt }: { role: "buyer" | "supplier"; id: string; text: string; remindAt?: string }) =>
+      CounterpartiesApi.addNote(role, id, text, remindAt), onSuccess: done }),
+    done: useMutation({ mutationFn: ({ role, id, noteId }: { role: "buyer" | "supplier"; id: string; noteId: string }) =>
+      CounterpartiesApi.noteDone(role, id, noteId), onSuccess: done }),
+  };
 }
 
 /** The sanctions "review" queue (staff). */

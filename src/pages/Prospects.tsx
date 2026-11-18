@@ -224,6 +224,15 @@ function ProspectRow({ deal, desk, onOpen }: { deal: Deal; desk?: ProspectSummar
       </div>
 
       {desk && <MoneyLine s={desk} />}
+      {desk && (
+        <p className={cn("text-[11px]", desk.busy_not_moving ? "text-[#f5a623]" : "text-muted-foreground")}
+          title="Effort so far: e-mails out, replies in, decisions a person made, and what the scan that found it cost">
+          Effort: {desk.emails_sent ?? 0} e-mail{desk.emails_sent === 1 ? "" : "s"} sent · {desk.replies ?? 0} repl{desk.replies === 1 ? "y" : "ies"}
+          {" · "}{desk.operator_touches ?? 0} decision{desk.operator_touches === 1 ? "" : "s"}
+          {desk.apify_cost_usd != null ? ` · scan USD ${desk.apify_cost_usd.toFixed(2)}` : ""}
+          {desk.busy_not_moving ? " — busy, not moving" : ""}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-1.5">
