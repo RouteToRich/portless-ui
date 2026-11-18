@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SupplierPerformanceCard } from "@/components/OpsCards";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -435,6 +436,10 @@ export function CompanyProfileSheet({ role, id, onClose }: { role: Role; id: str
                 <ScoreRing score={c.score} size={52} />
               </div>
             </DialogHeader>
+
+            {role === "supplier" && user?.is_portless && (
+              <SupplierPerformanceCard id={c.id} phone={c.phone} whatsapp={c.validation?.whatsapp} />
+            )}
 
             {/* Next actions */}
             <section className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">

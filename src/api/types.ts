@@ -634,6 +634,9 @@ export interface CounterpartyValidation {
   gst?: string | null;
   iec?: string | null;
   dgft_denied?: string | null;
+  phone?: string | null;
+  phone_e164?: string | null;
+  whatsapp?: string | null;
   checked_at?: string | null;
 }
 

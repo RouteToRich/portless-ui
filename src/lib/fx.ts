@@ -8,5 +8,8 @@ export function inr(usd: number | null | undefined, rate: number | null | undefi
 /** Tooltip naming the rate and where it comes from. */
 export function rateTitle(rate: number | null | undefined, source?: string | null): string | undefined {
   if (!rate) return undefined;
-  return `At ${rate.toFixed(2)} INR per USD (${source === "live" ? "live rate" : "fallback rate — NEGOTIATION_FALLBACK_USD_INR_RATE"}); the contract stays in USD`;
+  const basis = source === "live" ? "live rate"
+    : source === "reference" ? "reference rate recorded by staff or the daily feed"
+    : "fallback rate — NEGOTIATION_FALLBACK_USD_INR_RATE";
+  return `At ${rate.toFixed(2)} INR per USD (${basis}); the contract stays in USD`;
 }

@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { AuditLogCard, WatchersCard } from "@/components/backoffice/BackOfficeCards";
 import { DgftListCard } from "@/components/deal/ComplianceCards";
+import { FxReferenceCard, PlatformCostsCard } from "@/components/OpsCards";
 const CATEGORY_LABELS: Record<string, string> = {
   persistence: "Persistence",
   bus: "Event bus",
@@ -499,6 +500,8 @@ export function SystemHealth() {
       {/* Production readiness — which stubs / fallbacks the pipeline runs on */}
       <ReadinessPanel />
       <DgftListCard />
+      <FxReferenceCard />
+      <PlatformCostsCard />
       <WatchersCard />
       <AuditLogCard />
 

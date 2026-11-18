@@ -24,6 +24,8 @@ jobs:
         run: npm ci
       - name: Type check
         run: npm run lint
+      - name: Unit and component tests (Vitest)
+        run: npm test
       - name: Build
         run: npm run build
       - name: npm audit (high and critical; reported, not blocking yet)
