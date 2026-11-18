@@ -24,7 +24,9 @@ export function ScreeningReviewCard() {
     if (!reason || reason.trim().length < 3) return;
     try {
       await resolve.mutateAsync({ role: c.role, id: c.id, decision, reason: reason.trim() });
-      toast.success(`${c.name} ${decision === "clear" ? "cleared" : "failed"}`);
+      const pending = decision === "clear" && !(c.screening_reviews ?? []).some((r) => r.decision === "clear" && r.pending);
+      toast.success(pending ? `${c.name}: first clear recorded — a second person must confirm`
+        : `${c.name} ${decision === "clear" ? "cleared" : "failed"}`);
     } catch (e) {
       toast.error("Not saved", { description: e instanceof Error ? e.message : String(e) });
     }
@@ -44,6 +46,7 @@ export function ScreeningReviewCard() {
           {rows.map((c) => {
             const v = c.validation;
             const evidence = v?.evidence_url && /^https?:\/\//i.test(v.evidence_url) ? v.evidence_url : null;
+            const firstClear = [...(c.screening_reviews ?? [])].reverse().find((r) => r.decision === "clear" && r.pending);
             return (
               <li key={c.id} className="py-1.5 flex items-start gap-2 text-xs">
                 <div className="min-w-0 flex-1">
@@ -55,6 +58,11 @@ export function ScreeningReviewCard() {
                     </span>
                   </div>
                   <div className="text-[11px] text-muted-foreground">{v?.sanctions_reason ?? "No reason given by the screening"}</div>
+                  {firstClear && (
+                    <div className="text-[11px] text-[#f5a623]">
+                      Cleared by {firstClear.by} — a second, different person must confirm (“{firstClear.reason}”)
+                    </div>
+                  )}
                   {evidence && (
                     <a href={evidence} target="_blank" rel="noopener noreferrer"
                       className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5">
@@ -63,7 +71,7 @@ export function ScreeningReviewCard() {
                   )}
                 </div>
                 <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={resolve.isPending}
-                  onClick={() => decide(c, "clear")}>Clear</Button>
+                  onClick={() => decide(c, "clear")}>{firstClear ? "Confirm clear" : "Clear"}</Button>
                 <Button size="sm" variant="outline" className="h-7 text-[11px] text-[#ff5d6c]" disabled={resolve.isPending}
                   onClick={() => decide(c, "fail")}>Fail</Button>
               </li>

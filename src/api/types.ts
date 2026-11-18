@@ -910,6 +910,8 @@ export interface ScreeningReview {
   previous_sanctions: string;
   previous_reason?: string | null;
   evidence_url?: string | null;
+  /** A first "clear" waiting for a second, different person (two-person rule). */
+  pending?: boolean;
 }
 
 // A staff note on a company, optionally with a follow-up date (company_notes.py).
