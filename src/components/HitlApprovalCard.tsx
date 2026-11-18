@@ -200,7 +200,7 @@ function PayloadDetails({ action, payload }: { action: string; payload: Record<s
       label: "Amount",
       value: (
         <span>
-          <span className="font-semibold">{amount != null ? fmtUSD(amount) : "—"}</span>
+          <span className="font-semibold" data-testid="gate-amount">{amount != null ? fmtUSD(amount) : "—"}</span>
           {owed != null && (
             <span className="text-muted-foreground"> of {fmtUSD(owed)} owed</span>
           )}
@@ -637,6 +637,7 @@ export function HitlApprovalCard({
               <div className="space-y-2">
                 <Textarea
                   placeholder="Optional note..."
+                  data-testid="gate-note"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   className="text-xs min-h-[60px]"
@@ -647,6 +648,7 @@ export function HitlApprovalCard({
                     size="sm"
                     className="flex-1 gap-1.5"
                     onClick={() => handleDecision("APPROVE")}
+                    data-testid="gate-approve"
                     disabled={resolve.isPending || alreadySigned}
                     title={alreadySigned ? "You already approved — a different operator must countersign" : undefined}
                   >
@@ -658,6 +660,7 @@ export function HitlApprovalCard({
                     size="sm"
                     className="flex-1 gap-1.5"
                     onClick={() => handleDecision("REJECT")}
+                    data-testid="gate-reject"
                     disabled={resolve.isPending}
                   >
                     <XCircle className="w-4 h-4" /> Reject

@@ -2316,11 +2316,17 @@ function EscrowCard({ escrow, dealId }: { escrow: EscrowRecord; dealId: string }
   );
 }
 
+/** Stable test id from a visible label: "Released to PortLess" → "released-to-portless" (DEF-05). */
+function testId(label: string): string {
+  return label.toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 function LedgerRow({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" | "muted" }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0 text-xs">
+    <div className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0 text-xs"
+      data-testid={`ledger-row-${testId(label)}`}>
       <span className="text-muted-foreground">{label}</span>
-      <span
+      <span data-testid={`ledger-${testId(label)}`}
         className={cn(
           "font-semibold",
           tone === "good" && "text-[#2ec28a]",

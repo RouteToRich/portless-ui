@@ -18,6 +18,8 @@ export function StatusBadge({ status }: { status: DealStatus }) {
 
   return (
     <span
+      data-testid="deal-status"
+      data-status={status}
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border",
         isDanger && "bg-[rgba(255,93,108,0.15)] text-[#ff5d6c] border-[rgba(255,93,108,0.4)]",

@@ -168,7 +168,7 @@ function EscrowLedgers() {
             {tiles.map((t) => {
               const Icon = t.icon;
               return (
-                <Card key={t.label}>
+                <Card key={t.label} data-testid={`money-${t.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}>
                   <CardContent className="flex items-center gap-3 pt-4">
                     <div
                       className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
@@ -376,7 +376,7 @@ export function MoneyMargin() {
           {metrics.map((m) => {
             const Icon = m.icon;
             return (
-              <Card key={m.label}>
+              <Card key={m.label} data-testid={`money-${m.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}>
                 <CardContent className="flex items-center gap-3 pt-4">
                   <div
                     className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"

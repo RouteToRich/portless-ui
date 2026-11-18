@@ -69,6 +69,8 @@ export function KillSwitch() {
   return (
     <>
       <Button
+        data-testid="kill-switch"
+        data-state={unreadable ? "unreadable" : paused ? "paused" : "running"}
         size="sm"
         variant={paused ? "destructive" : "outline"}
         className="h-8 text-xs gap-1"

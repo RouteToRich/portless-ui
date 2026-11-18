@@ -187,6 +187,16 @@ export function Automation() {
     },
     onError: (e) => toast.error(errorText(e, "The run could not be stopped")),
   });
+  const copyDirectory = useMutation({
+    mutationFn: AutomationApi.copyDirectory,
+    onSuccess: (r) => {
+      toast.success(`Copied ${r.copied.buyer} buyers and ${r.copied.supplier} suppliers into ${r.database}`, {
+        description: "Every mailbox is a .invalid address — nothing can be sent to these companies.",
+      });
+      refresh();
+    },
+    onError: (e) => toast.error(errorText(e, "The directory could not be copied")),
+  });
   const clear = useMutation({
     mutationFn: AutomationApi.clear,
     onSuccess: (r) => {
@@ -281,6 +291,10 @@ export function Automation() {
               </Button>
             )}
             <div className="flex-1" />
+            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" disabled={running || copyDirectory.isPending}
+              onClick={() => copyDirectory.mutate()} data-testid="copy-directory">
+              {copyDirectory.isPending ? "Copying…" : "Copy live directory"}
+            </Button>
             <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" disabled={running} onClick={() => setConfirm("test_data")}>
               <Trash2 className="w-3.5 h-3.5" /> Clear test data
             </Button>

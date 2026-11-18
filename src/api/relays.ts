@@ -25,6 +25,8 @@ export interface CostSheet {
   pct_of_price: number;
   warnings: string[];
   inspection_phases?: number;
+  container_plan?: { containers_20: number; containers_40: number; capacity_mt: number; fill_pct: number;
+    spare_mt: number; fill_suggestion_mt: number };
   supplier_price_usd_per_mt: number | null;
   margin_floor_pct: number | null;
   min_buyer_price_usd_per_mt: number | null;

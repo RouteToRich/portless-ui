@@ -34,6 +34,7 @@ import { HsCode } from "@/components/HsCode";
 import { HsPicker, type HsChoice } from "@/components/HsPicker";
 
 import { askReason } from "@/components/ReasonDialog";
+import { isAutomationMode } from "@/lib/automationMode";
 type Role = "buyer" | "supplier";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -547,6 +548,8 @@ function RolePanel({
             ? "Scan in progress — companies appear here as they are found (refreshing every 10 s)."
             : q || market || hs || country || check || stage || contactable
             ? "Nothing matches these filters."
+            : isAutomationMode()
+            ? "Search is off in Automation mode (no Apify token, by design). Start a run on the Automation page, or use \"Copy live directory\" there to bring in the live companies as test data."
             : "Run a scan: every company it finds is listed here, even when the scan creates no opportunity or deal. Add your products on the Catalogue page so the search uses product names."}
         </p>
       </div>

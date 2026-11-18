@@ -204,6 +204,11 @@ export function CostSheetCard({ dealId }: { dealId: string }) {
               <span>Lowest buyer price at the {sheet.margin_floor_pct ?? "—"} % floor: <b>{sheet.min_buyer_price_usd_per_mt ? fmtUSD(sheet.min_buyer_price_usd_per_mt) : "—"}</b></span>
               {sheet.net_margin_at_agreed_pct != null && <span>Net margin at the agreed price: <b>{sheet.net_margin_at_agreed_pct} %</b></span>}
             </div>
+            {sheet.container_plan && sheet.container_plan.capacity_mt > 0 && (
+              <p>Containers: {sheet.container_plan.containers_20}×20′ + {sheet.container_plan.containers_40}×40′ · capacity{" "}
+                {sheet.container_plan.capacity_mt} MT · {sheet.container_plan.fill_pct} % full
+                {sheet.container_plan.fill_suggestion_mt > 0 && <b> — offer {sheet.container_plan.fill_suggestion_mt} MT more to fill them</b>}</p>
+            )}
             {sheet.warnings.length > 0 && <p className="text-[#f5a623]">{sheet.warnings.join(" · ")}</p>}
           </>
         )}

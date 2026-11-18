@@ -444,6 +444,9 @@ export const AutomationApi = {
   clear: (scope: "test_data" | "everything") =>
     api.post<{ database: string; deleted: number }>("/automation/clear", { scope }).then((r) => r.data),
   diagnostics: () => api.get<Record<string, unknown>>("/automation/diagnostics").then((r) => r.data),
+  /** Live buyer / supplier directory copied into the automation database, mailboxes made .invalid. */
+  copyDirectory: () =>
+    api.post<{ database: string; copied: { buyer: number; supplier: number } }>("/automation/copy-directory").then((r) => r.data),
 };
 
 export const AutonomyApi = {
