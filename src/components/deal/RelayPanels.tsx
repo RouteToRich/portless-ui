@@ -204,7 +204,15 @@ export function CostSheetCard({ dealId }: { dealId: string }) {
               <span>Lowest buyer price at the {sheet.margin_floor_pct ?? "—"} % floor: <b>{sheet.min_buyer_price_usd_per_mt ? fmtUSD(sheet.min_buyer_price_usd_per_mt) : "—"}</b></span>
               {sheet.net_margin_at_agreed_pct != null && <span>Net margin at the agreed price: <b>{sheet.net_margin_at_agreed_pct} %</b></span>}
             </div>
-            {sheet.container_plan && sheet.container_plan.capacity_mt > 0 && (
+            {sheet.container_choice && Object.keys(sheet.container_choice.boxes).length > 0 ? (
+              <p>Containers: {Object.entries(sheet.container_choice.boxes).map(([c, n]) => `${n}×${c}`).join(" + ")}
+                {sheet.container_choice.usd_per_mt != null && <> · freight {fmtUSD(sheet.container_choice.usd_per_mt)}/MT</>}
+                {" "}· {sheet.container_choice.fill_pct} % full
+                {sheet.container_choice.fill_suggestion_mt > 0 && <b> — offer {sheet.container_choice.fill_suggestion_mt} MT more
+                  {sheet.container_choice.usd_per_mt_if_filled != null && <> (freight falls to {fmtUSD(sheet.container_choice.usd_per_mt_if_filled)}/MT)</>}</b>}
+                {sheet.container_choice.estimated.length > 0 && <span className="text-muted-foreground"> · {sheet.container_choice.estimated.join(", ")} estimated — add lane quotes on the Radar</span>}
+              </p>
+            ) : sheet.container_plan && sheet.container_plan.capacity_mt > 0 && (
               <p>Containers: {sheet.container_plan.containers_20}×20′ + {sheet.container_plan.containers_40}×40′ · capacity{" "}
                 {sheet.container_plan.capacity_mt} MT · {sheet.container_plan.fill_pct} % full
                 {sheet.container_plan.fill_suggestion_mt > 0 && <b> — offer {sheet.container_plan.fill_suggestion_mt} MT more to fill them</b>}</p>
@@ -265,7 +273,9 @@ export function FreightLanesCard() {
       reasonLabel: false, confirm: "Save quote",
       fields: [
         { name: "market", label: "Destination country (2 letters)", required: true, upper: true, placeholder: "AE" },
-        { name: "type", label: "Container", type: "select", required: true, options: [{ value: "dry", label: "Dry (20GP)" }, { value: "reefer", label: "Reefer (20RF)" }] },
+        { name: "type", label: "Container", type: "select", required: true, options: [
+          { value: "dry", label: "20' dry" }, { value: "dry40", label: "40' dry" }, { value: "hc40", label: "40' high cube" },
+          { value: "reefer", label: "20' reefer" }, { value: "reefer40", label: "40' reefer" }] },
         { name: "usd", label: "USD per container", type: "number", required: true },
         { name: "mt", label: "MT per container", type: "number", placeholder: "20" },
         { name: "note", label: "Who quoted, reference" },

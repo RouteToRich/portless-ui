@@ -1251,6 +1251,10 @@ export interface DealException {
   deal_id: string;
   category?: string | null;
   status: string;
+  severity?: string | null;
+  summary?: string | null;
+  root_cause?: string | null;
+  raised_at?: string | null;
   remediation_plan: string[];
 }
 

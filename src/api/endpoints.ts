@@ -502,10 +502,42 @@ export const ApprovalsApi = {
       .then((r) => r.data),
 };
 
+interface RawException {
+  exception_id: string;
+  deal_id: string;
+  status: string;
+  category?: string | null;
+  severity?: string | null;
+  summary?: string | null;
+  root_cause?: string | null;
+  raised_at?: string | null;
+  remediation_steps?: { step: number; description: string; status?: string }[];
+}
+
+// The Exception Resolver's own routes (/exception-resolver/exceptions…); the old /exceptions
+// paths existed only on the standalone gateway, so the page answered 404 on the monolith.
+function normalizeException(raw: RawException): DealException {
+  return {
+    exception_id: raw.exception_id,
+    deal_id: raw.deal_id,
+    category: raw.category ?? null,
+    status: raw.status,
+    severity: raw.severity ?? null,
+    summary: raw.summary ?? null,
+    root_cause: raw.root_cause ?? null,
+    raised_at: raw.raised_at ?? null,
+    remediation_plan: (raw.remediation_steps ?? [])
+      .sort((a, b) => a.step - b.step)
+      .map((s) => (s.status && s.status !== "PENDING" ? `${s.description} (${s.status.toLowerCase()})` : s.description)),
+  };
+}
+
 export const ExceptionsApi = {
   get: (exceptionId: string) =>
-    api.get<DealException>(`/exceptions/${exceptionId}`).then((r) => r.data),
-  list: () => api.get<DealException[]>("/exceptions").then((r) => r.data),
+    api.get<RawException>(`/exception-resolver/exceptions/${exceptionId}`).then((r) => normalizeException(r.data)),
+  list: () =>
+    api.get<{ items: RawException[]; total: number }>("/exception-resolver/exceptions", { params: { limit: 200 } })
+      .then((r) => (r.data.items ?? []).map(normalizeException)),
 };
 
 export const NegotiationApi = {
