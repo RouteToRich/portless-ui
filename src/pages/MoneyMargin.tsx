@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -123,7 +124,7 @@ function CostTable() {
 }
 
 function EscrowLedgers() {
-  const { data: ledgers, isLoading, isError } = useEscrowLedgers();
+  const { data: ledgers, isLoading, isError, refetch } = useEscrowLedgers();
   const rows: DealLedger[] = ledgers ?? [];
 
   const sum = (pick: (l: DealLedger) => number | null | undefined) =>
@@ -162,7 +163,10 @@ function EscrowLedgers() {
           {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
         </div>
       ) : isError ? (
-        <p className="text-xs text-muted-foreground">Escrow ledgers unavailable</p>
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-[#ff5d6c]">Service unavailable</span> — escrow ledgers could not be loaded.{" "}
+          <Button variant="outline" size="sm" className="h-6 ml-1" onClick={() => refetch()}>Retry</Button>
+        </p>
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -296,7 +300,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 }
 
 export function MoneyMargin() {
-  const { data: deals, isLoading, isError } = useDeals();
+  const { data: deals, isLoading, isError, refetch } = useDeals();
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "COMPLETE">("ALL");
 
   const allDeals = deals ?? [];
@@ -480,7 +484,8 @@ export function MoneyMargin() {
       ) : isError ? (
         <div className="flex flex-col items-center py-12 gap-2 text-muted-foreground">
           <TrendingUp className="w-8 h-8 opacity-30" />
-          <p className="text-sm">Backend unavailable</p>
+          <p className="text-sm font-medium text-[#ff5d6c]">Service unavailable</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
         </div>
       ) : (
         <div className="rounded-xl border border-border overflow-hidden">

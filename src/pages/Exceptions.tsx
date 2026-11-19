@@ -214,7 +214,8 @@ export function Exceptions() {
             ) : isError ? (
               <div className="flex flex-col items-center py-8 gap-2 text-muted-foreground text-xs">
                 <AlertTriangle className="w-5 h-5" />
-                Backend unavailable
+                <span className="font-medium text-[#ff5d6c]">Service unavailable</span>
+                <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
               </div>
             ) : exList.length === 0 ? (
               <div className="flex flex-col items-center py-8 gap-2 text-muted-foreground text-xs">

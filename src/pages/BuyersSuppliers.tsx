@@ -530,7 +530,7 @@ function RolePanel({
   if (isError) {
     return (
       <div className="py-10 text-center text-sm text-muted-foreground">
-        Could not load {role === "buyer" ? "buyers" : "suppliers"}.{" "}
+        <span className="font-medium text-[#ff5d6c]">Service unavailable</span> — could not load {role === "buyer" ? "buyers" : "suppliers"}.{" "}
         <button className="text-primary hover:underline" onClick={() => refetch()}>
           Retry
         </button>

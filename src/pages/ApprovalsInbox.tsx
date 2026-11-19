@@ -73,7 +73,7 @@ function ApprovalRow({ approval, isSelected, onClick }: ApprovalRowProps) {
       </div>
 
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-        <span className="font-mono">{approval.deal_id.slice(0, 8)}…</span>
+        <span className="font-mono">{approval.deal_id}</span>
         {approval.financial_impact_usd != null && (
           <>
             <span className="text-border">·</span>
@@ -252,7 +252,8 @@ export function ApprovalsInbox() {
             ) : isError ? (
               <div className="flex flex-col items-center py-12 gap-2 text-muted-foreground">
                 <Bell className="w-6 h-6" />
-                <p className="text-xs">Backend unreachable</p>
+                <p className="text-xs font-medium text-[#ff5d6c]">Service unavailable</p>
+                <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
               </div>
             ) : filteredPending.length === 0 && filteredResolved.length === 0 ? (
               <div className="flex flex-col items-center py-12 gap-2 text-muted-foreground">

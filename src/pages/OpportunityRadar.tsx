@@ -1215,7 +1215,8 @@ export function OpportunityRadar() {
       ) : isError ? (
         <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
           <Zap className="w-8 h-8 opacity-30" />
-          <p className="text-sm">Could not load opportunities</p>
+          <p className="text-sm font-medium text-[#ff5d6c]">Service unavailable</p>
+          <p className="text-xs">Could not load opportunities.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
         </div>
       ) : all.length === 0 ? (

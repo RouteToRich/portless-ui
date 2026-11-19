@@ -122,6 +122,8 @@ function DealCard({ deal, onClick }: DealCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm"><HsCode code={deal.hs_code} className="font-bold text-foreground font-mono" /></p>
+          {/* The deal's id: two deals of the same product and lane look alike without it. */}
+          <p className="text-[10px] text-muted-foreground font-mono" title="Deal id">{deal.deal_id}</p>
           {buyer && supplier && (
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {buyer.country} → {supplier.country}

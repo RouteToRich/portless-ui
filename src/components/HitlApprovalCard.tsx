@@ -469,7 +469,7 @@ export function HitlApprovalCard({
           <div>
             <p className="text-sm font-semibold">{formatAction(approval.action)}</p>
             <p className="text-xs text-muted-foreground font-mono">
-              Deal: {approval.deal_id.slice(0, 12)}…
+              Deal: <span className="font-mono">{approval.deal_id}</span>
             </p>
           </div>
         </div>
